@@ -63,6 +63,16 @@ CREATE TABLE IF NOT EXISTS engagement (
     followers_delta INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS linkedin_auth (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    member_urn TEXT NOT NULL,
+    member_name TEXT,
+    access_token TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    scopes TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 CREATE INDEX IF NOT EXISTS idx_events_processed ON repo_events(processed);
 """
@@ -92,6 +102,8 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
         existing_post_cols = {row["name"] for row in conn.execute("PRAGMA table_info(posts)").fetchall()}
         if "image_path" not in existing_post_cols:
             conn.execute("ALTER TABLE posts ADD COLUMN image_path TEXT")
+        if "linkedin_post_urn" not in existing_post_cols:
+            conn.execute("ALTER TABLE posts ADD COLUMN linkedin_post_urn TEXT")
 
 
 # -------------------- repos --------------------
@@ -246,6 +258,50 @@ def set_post_image_path(post_id: int, image_path: Optional[str]) -> None:
             "UPDATE posts SET image_path = ? WHERE id = ?",
             (image_path, post_id),
         )
+
+
+def set_post_linkedin_urn(post_id: int, urn: Optional[str]) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE posts SET linkedin_post_urn = ? WHERE id = ?",
+            (urn, post_id),
+        )
+
+
+# -------------------- linkedin_auth (singleton row, id = 1) --------------------
+
+def save_linkedin_auth(
+    member_urn: str,
+    member_name: Optional[str],
+    access_token: str,
+    expires_at: str,
+    scopes: str,
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO linkedin_auth (id, member_urn, member_name, access_token, expires_at, scopes)
+            VALUES (1, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                member_urn = excluded.member_urn,
+                member_name = excluded.member_name,
+                access_token = excluded.access_token,
+                expires_at = excluded.expires_at,
+                scopes = excluded.scopes,
+                created_at = CURRENT_TIMESTAMP
+            """,
+            (member_urn, member_name, access_token, expires_at, scopes),
+        )
+
+
+def get_linkedin_auth() -> Optional[dict]:
+    with connect() as conn:
+        return conn.execute("SELECT * FROM linkedin_auth WHERE id = 1").fetchone()
+
+
+def clear_linkedin_auth() -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM linkedin_auth WHERE id = 1")
 
 
 def pending_groups() -> list[list[dict]]:

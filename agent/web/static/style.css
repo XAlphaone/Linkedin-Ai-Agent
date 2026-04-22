@@ -371,6 +371,47 @@ main {
   margin: 0 0 14px;
 }
 .chart svg { width: 100%; height: auto; }
+
+/* ---------- settings panel ---------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.panel h2 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 22px;
+  margin: 0 0 14px;
+}
+.panel .hint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 14px;
+}
+.panel .actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.kv {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  font-size: 14px;
+}
+.kv > div { display: flex; gap: 12px; align-items: baseline; }
+.kv .k {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  min-width: 130px;
+}
+.kv .v { color: var(--text); }
+a.btn { text-decoration: none; display: inline-block; }
 .svg-label { fill: var(--muted); font-family: var(--serif); font-size: 13px; }
 .svg-track { fill: var(--surface); }
 .svg-bar   { fill: var(--accent); opacity: 0.85; }

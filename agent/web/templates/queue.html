@@ -51,7 +51,18 @@
           <textarea name="edited_content" rows="12" class="post-body">{{ post.content }}</textarea>
           <div class="card-actions">
             <button type="button" class="btn ghost" data-copy-for="#post-{{ post.id }}">Copy</button>
-            <button type="submit" class="btn">Mark Posted</button>
+            {% if linkedin_connected %}
+              <button
+                type="submit"
+                class="btn"
+                formaction="/posts/{{ post.id }}/publish"
+                title="Publish directly to LinkedIn">
+                Publish to LinkedIn
+              </button>
+              <button type="submit" class="btn ghost" title="Mark as posted (manual copy/paste flow)">Mark Posted</button>
+            {% else %}
+              <button type="submit" class="btn">Mark Posted</button>
+            {% endif %}
             <button
               type="submit"
               class="btn ghost"

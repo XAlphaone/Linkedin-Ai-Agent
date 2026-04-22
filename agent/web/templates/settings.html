@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Settings — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>Settings</h1>
+  <div class="sub">linkedin connection · token management</div>
+</section>
+
+<section class="panel">
+  <h2>LinkedIn connection</h2>
+
+  {% if not configured %}
+    <p class="empty">
+      <code class="mono">LINKEDIN_CLIENT_ID</code> and
+      <code class="mono">LINKEDIN_CLIENT_SECRET</code> are not set in
+      <code class="mono">.env</code>. Set them, restart the server, then
+      come back to connect.
+    </p>
+    <p class="hint">
+      Redirect URI this app will send to LinkedIn:<br>
+      <code class="mono">{{ redirect_uri }}</code><br>
+      Add that to your LinkedIn Developer app under <b>Auth → Authorized redirect URLs</b>.
+    </p>
+
+  {% elif auth %}
+    <div class="kv">
+      <div><span class="k">Connected as</span><span class="v">{{ auth.member_name or auth.member_urn }}</span></div>
+      <div><span class="k">Member URN</span><span class="v mono">{{ auth.member_urn }}</span></div>
+      <div><span class="k">Scopes</span><span class="v mono">{{ auth.scopes }}</span></div>
+      <div><span class="k">Token expires</span><span class="v mono">{{ auth.expires_at }}</span></div>
+      <div><span class="k">Connected at</span><span class="v mono">{{ auth.created_at }}</span></div>
+    </div>
+    <form method="post" action="/auth/linkedin/disconnect" class="actions">
+      <button type="submit" class="btn ghost">Disconnect</button>
+      <a href="/auth/linkedin/start" class="btn">Reconnect</a>
+    </form>
+    <p class="hint">
+      LinkedIn member tokens live 60 days and can't be silently refreshed —
+      use <b>Reconnect</b> before the expiry above to get a fresh one.
+    </p>
+
+  {% else %}
+    <p>Not connected. Click below to authorize the agent to post on your behalf.</p>
+    <p class="hint">
+      Redirect URI registered with LinkedIn:
+      <code class="mono">{{ redirect_uri }}</code>
+    </p>
+    <a href="/auth/linkedin/start" class="btn">Connect LinkedIn</a>
+  {% endif %}
+</section>
+
+{% endblock %}

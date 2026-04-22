@@ -2,11 +2,15 @@
 
 A local Python desktop agent that watches your git activity, drafts LinkedIn
 post candidates (with on-topic images) via the xAI Grok API, and serves them
-through a localhost dashboard where you review and approve. You copy the
-approved post into LinkedIn manually.
+through a localhost dashboard where you review and publish.
 
-**The agent never touches LinkedIn directly.** No browser automation, no
-LinkedIn API calls, no scraping. That's a hard constraint.
+Posting uses LinkedIn's **official OAuth 2.0 + REST API** — no browser
+automation, no scraping. You authorize your own account once via the Settings
+page, then each generated post gets a **Publish to LinkedIn** button in the
+dashboard. Nothing is published without your explicit click. If you'd rather
+run in manual mode, leave `LINKEDIN_CLIENT_ID` blank in `.env` and the
+dashboard falls back to a **Copy** / **Mark Posted** flow where you paste the
+draft into LinkedIn yourself.
 
 ---
 

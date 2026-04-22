@@ -59,6 +59,10 @@ class Config(BaseModel):
     xai_api_key: str = ""
     github_token: str = ""
 
+    linkedin_client_id: str = ""
+    linkedin_client_secret: str = ""
+    linkedin_redirect_uri: str = "http://127.0.0.1:8765/auth/linkedin/callback"
+
 
 def load_config(
     config_path: str | Path = "config.yaml",
@@ -71,4 +75,9 @@ def load_config(
             data = yaml.safe_load(f) or {}
     data["xai_api_key"] = os.environ.get("XAI_API_KEY", "")
     data["github_token"] = os.environ.get("GITHUB_TOKEN", "")
+    data["linkedin_client_id"] = os.environ.get("LINKEDIN_CLIENT_ID", "")
+    data["linkedin_client_secret"] = os.environ.get("LINKEDIN_CLIENT_SECRET", "")
+    env_redirect = os.environ.get("LINKEDIN_REDIRECT_URI", "").strip()
+    if env_redirect:
+        data["linkedin_redirect_uri"] = env_redirect
     return Config.model_validate(data)
