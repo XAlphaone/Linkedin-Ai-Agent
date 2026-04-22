@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Repos — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>Repos</h1>
+  <div class="sub">watched sources for commits and PRs</div>
+</section>
+
+<table class="repos">
+  <thead>
+    <tr>
+      <th>Name</th><th>Type</th><th>Path / URL</th><th>Branch</th>
+      <th>Last checked</th><th>Last SHA</th><th>Enabled</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in repos %}
+    <tr>
+      <td class="mono">{{ r.name }}</td>
+      <td>{{ r.type }}</td>
+      <td class="mono small">{{ r.path_or_url }}</td>
+      <td class="mono small">{{ r.branch }}</td>
+      <td class="mono small">{{ r.last_checked_at or '—' }}</td>
+      <td class="mono small">{{ (r.last_sha or '—')[:10] }}</td>
+      <td>
+        <form method="post" action="/repos/{{ r.id }}/toggle" class="inline">
+          <label class="toggle">
+            <input type="checkbox" name="enabled" value="1"
+              {% if r.enabled %}checked{% endif %}
+              onchange="this.form.submit()">
+            <span>{% if r.enabled %}on{% else %}off{% endif %}</span>
+          </label>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="empty">No repos configured.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<section class="card add-repo">
+  <h2>Add / update</h2>
+  <form method="post" action="/repos" class="grid">
+    <label>Name<input name="name" required></label>
+    <label>Type
+      <select name="type">
+        <option value="local">local</option>
+        <option value="github">github</option>
+      </select>
+    </label>
+    <label class="wide">Path or URL<input name="path_or_url" required></label>
+    <label>Branch<input name="branch" value="main"></label>
+    <label class="toggle">
+      <input type="checkbox" name="enabled" value="1" checked>
+      <span>enabled</span>
+    </label>
+    <button type="submit" class="btn">Save</button>
+  </form>
+</section>
+
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}History — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>History</h1>
+  <div class="sub">last 100 posted or rejected posts</div>
+</section>
+
+{% if not rows %}
+  <p class="empty">Nothing posted or rejected yet.</p>
+{% endif %}
+
+<div class="history">
+{% for row in rows %}
+  {% set info = angle_labels.get(row.angle, {"label": row.angle, "audience": ""}) %}
+  <article class="hist-row {{ row.status }}">
+    <header class="hist-head">
+      <span class="status {{ row.status }}">{{ row.status }}</span>
+      <span class="angle">{{ info.label }}</span>
+      <span class="when">
+        {% if row.posted_at %}posted {{ row.posted_at }}
+        {% else %}created {{ row.created_at }}{% endif %}
+      </span>
+    </header>
+
+    {% if row.image_path %}
+      <a href="/images/{{ row.id }}" target="_blank" class="image-link">
+        <img src="/images/{{ row.id }}" alt="" class="variant-image hist">
+      </a>
+    {% endif %}
+
+    <pre class="post-body read">{{ row.edited_content or row.content }}</pre>
+
+    {% if row.status == 'posted' %}
+      {% if row.engagement_id %}
+        <div class="engagement-summary">
+          <span><b>{{ row.impressions }}</b> impressions</span>
+          <span><b>{{ row.likes }}</b> likes</span>
+          <span><b>{{ row.comments }}</b> comments</span>
+          <span><b>{{ row.reshares }}</b> reshares</span>
+          <span><b>{{ row.profile_visits }}</b> profile visits</span>
+          <span><b>{{ row.followers_delta }}</b> followers Δ</span>
+        </div>
+      {% else %}
+        <form method="post" action="/engagement/{{ row.id }}" class="engagement-form">
+          <label>impressions <input type="number" name="impressions" min="0" value="0"></label>
+          <label>likes <input type="number" name="likes" min="0" value="0"></label>
+          <label>comments <input type="number" name="comments" min="0" value="0"></label>
+          <label>reshares <input type="number" name="reshares" min="0" value="0"></label>
+          <label>profile visits <input type="number" name="profile_visits" min="0" value="0"></label>
+          <label>followers Δ <input type="number" name="followers_delta" value="0"></label>
+          <button type="submit" class="btn">Save</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </article>
+{% endfor %}
+</div>
+
+{% endblock %}

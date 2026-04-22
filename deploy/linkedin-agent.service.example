@@ -1,0 +1,23 @@
+# systemd user unit. Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/linkedin-agent.service.example ~/.config/systemd/user/linkedin-agent.service
+#   # edit paths in the copied file, then:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now linkedin-agent.service
+#   systemctl --user status linkedin-agent.service
+
+[Unit]
+Description=linkedin-agent (local dashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/code/linkedin-agent
+ExecStart=%h/code/linkedin-agent/.venv/bin/python %h/code/linkedin-agent/run.py
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Stats — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>Stats</h1>
+  <div class="sub">angle performance · Bayesian-smoothed, prior mean 50, prior weight 5</div>
+</section>
+
+<table class="stats">
+  <thead>
+    <tr><th>Angle</th><th class="num">Samples</th><th class="num">Avg score</th><th class="num">Smoothed</th><th class="num">Weight</th></tr>
+  </thead>
+  <tbody>
+  {% for s in stats %}
+    {% set info = angle_labels.get(s.angle, {"label": s.angle}) %}
+    <tr>
+      <td>{{ info.label }}</td>
+      <td class="num mono">{{ s.samples }}</td>
+      <td class="num mono">{{ s.avg_score }}</td>
+      <td class="num mono">{{ s.smoothed_mean }}</td>
+      <td class="num mono">{{ (s.weight * 100) | round(1) }}%</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<section class="chart">
+  <h2>Weight distribution</h2>
+  <svg viewBox="0 0 600 180" role="img" aria-label="Angle weights bar chart">
+    {% set pad = 120 %}
+    {% set bar_h = 28 %}
+    {% set max_w = 420 %}
+    {% for s in stats %}
+      {% set y = loop.index0 * 52 + 20 %}
+      {% set w = (s.weight * max_w) | round(1) %}
+      {% set info = angle_labels.get(s.angle, {"label": s.angle}) %}
+      <text x="{{ pad - 8 }}" y="{{ y + bar_h / 2 + 4 }}" text-anchor="end" class="svg-label">{{ info.label }}</text>
+      <rect x="{{ pad }}" y="{{ y }}" width="{{ max_w }}" height="{{ bar_h }}" class="svg-track"></rect>
+      <rect x="{{ pad }}" y="{{ y }}" width="{{ w }}" height="{{ bar_h }}" class="svg-bar"></rect>
+      <text x="{{ pad + w + 8 }}" y="{{ y + bar_h / 2 + 4 }}" class="svg-value">{{ (s.weight * 100) | round(1) }}%</text>
+    {% endfor %}
+  </svg>
+</section>
+
+{% endblock %}

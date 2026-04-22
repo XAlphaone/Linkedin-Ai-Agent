@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS LaunchAgent. Install:
+    mkdir -p ~/Library/LaunchAgents
+    cp deploy/launchd.plist.example ~/Library/LaunchAgents/com.you.linkedin-agent.plist
+    # Replace every /path/to/linkedin-agent below with the absolute path to
+    # this repo on your machine, then:
+    launchctl load ~/Library/LaunchAgents/com.you.linkedin-agent.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.you.linkedin-agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/path/to/linkedin-agent/.venv/bin/python</string>
+    <string>/path/to/linkedin-agent/run.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/linkedin-agent</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/linkedin-agent/data/agent.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/linkedin-agent/data/agent.stderr.log</string>
+</dict>
+</plist>

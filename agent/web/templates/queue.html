@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Queue — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>Queue</h1>
+  <div class="toolbar">
+    <form method="post" action="/actions/poll_now" class="inline">
+      <button type="submit" class="btn ghost">Poll Now</button>
+    </form>
+    <form method="post" action="/actions/generate_now" class="inline">
+      <button type="submit" class="btn">Generate Now</button>
+    </form>
+  </div>
+</section>
+
+{% if not groups %}
+  <p class="empty">Nothing pending. Click <em>Generate Now</em> to draft a set.</p>
+{% endif %}
+
+{% for group in groups %}
+  {% set first = group[0] %}
+  <section class="group">
+    <header class="group-head">
+      <span class="group-meta">drafted {{ first.created_at }}</span>
+      <span class="group-meta mono">group · {{ first.variant_group[:8] }}</span>
+    </header>
+
+    <div class="variants">
+    {% for post in group %}
+      {% set info = angle_labels.get(post.angle, {"label": post.angle, "audience": ""}) %}
+      <article class="card">
+        <header class="card-head">
+          <div class="angle">{{ info.label }}</div>
+          <div class="audience">{{ info.audience }}</div>
+        </header>
+
+        {% if post.image_path %}
+          <a href="/images/{{ post.id }}" target="_blank" class="image-link" title="Open full size">
+            <img src="/images/{{ post.id }}" alt="Image for this variant" class="variant-image">
+          </a>
+        {% else %}
+          <div class="variant-image placeholder">no image</div>
+        {% endif %}
+
+        {% if post.hook %}
+          <div class="hook">{{ post.hook }}</div>
+        {% endif %}
+
+        <form method="post" action="/posts/{{ post.id }}/mark_posted" class="variant-form">
+          <textarea name="edited_content" rows="12" class="post-body">{{ post.content }}</textarea>
+          <div class="card-actions">
+            <button type="button" class="btn ghost" data-copy-for="#post-{{ post.id }}">Copy</button>
+            <button type="submit" class="btn">Mark Posted</button>
+            <button
+              type="submit"
+              class="btn ghost"
+              formaction="/posts/{{ post.id }}/reject"
+              formnovalidate>
+              Reject
+            </button>
+            <button
+              type="submit"
+              class="btn ghost"
+              formaction="/posts/{{ post.id }}/regenerate_image"
+              formnovalidate
+              title="Generate a fresh image for this variant">
+              Regen image
+            </button>
+          </div>
+          <textarea id="post-{{ post.id }}" class="hidden-source" readonly>{{ post.content }}</textarea>
+        </form>
+      </article>
+    {% endfor %}
+    </div>
+  </section>
+{% endfor %}
+
+<script>
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-copy-for]");
+  if (!btn) return;
+  const sel = btn.getAttribute("data-copy-for");
+  const form = btn.closest("form");
+  const live = form ? form.querySelector("textarea[name=edited_content]") : null;
+  const src = live || document.querySelector(sel);
+  if (!src) return;
+  try {
+    await navigator.clipboard.writeText(src.value);
+    const prev = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = prev; }, 1200);
+  } catch (err) {
+    console.warn(err);
+  }
+});
+</script>
+{% endblock %}

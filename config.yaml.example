@@ -1,0 +1,42 @@
+author:
+  name: "Your Name"
+  headline: "Short one-liner describing what you do — appears in the system prompt"
+  positioning:
+    # Concrete things you actually work on. The generator uses these so posts
+    # sound like you, not a chatbot. Be specific.
+    - "example: deep experience in <language/stack>"
+    - "example: currently building <thing>"
+    - "example: responsible for <area> at <company>"
+  avoid_topics:
+    # Anything you don't want the agent to draft about.
+    - "political takes"
+    - "personal health"
+
+repos:
+  # Local git repo — absolute path, any branch.
+  - name: "my-local-repo"
+    type: local
+    path: "/absolute/path/to/your/local/repo"
+    branch: "main"
+    enabled: true
+
+  # GitHub repo — public or private (private needs GITHUB_TOKEN with Contents:Read + Pull requests:Read).
+  - name: "my-github-repo"
+    type: github
+    url: "https://github.com/your-user/your-repo"
+    branch: "main"
+    enabled: true
+
+generation:
+  model: "grok-4.20-0309-reasoning"            # any xAI text model
+  variants_per_day: 3
+  poll_interval_hours: 2
+  daily_generate_cron: "0 7 * * *"             # UTC cron expression
+  generate_images: true
+  image_model: "grok-imagine-image-pro"        # $0.07/image; downgrade to "grok-imagine-image" for $0.02
+  image_aspect_ratio: "2:1"                    # LinkedIn feed images are ~1.91:1
+  image_resolution: "2k"                       # or "1k" for faster/cheaper
+
+server:
+  host: "127.0.0.1"
+  port: 8765
