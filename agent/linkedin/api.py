@@ -24,8 +24,15 @@ TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 POSTS_URL = "https://api.linkedin.com/rest/posts"
 IMAGES_INIT_URL = "https://api.linkedin.com/rest/images?action=initializeUpload"
+ORG_ACLS_URL = "https://api.linkedin.com/rest/organizationalEntityAcls"
+ORGANIZATIONS_URL = "https://api.linkedin.com/rest/organizations"
 
-SCOPES = "openid profile email w_member_social"
+# Scope sets for the two LinkedIn apps (member-posts app vs org-posts app).
+SCOPES_MEMBER = "openid profile email w_member_social"
+SCOPES_ORG = "openid profile email r_organization_social rw_organization_admin w_organization_social"
+
+# Back-compat alias (older code imports SCOPES).
+SCOPES = SCOPES_MEMBER
 # LinkedIn rotates API versions monthly and supports each for at least 12 months.
 # Check https://learn.microsoft.com/en-us/linkedin/marketing/versioning and bump
 # this once a year. Using a retired version returns HTTP 426 NONEXISTENT_VERSION.
@@ -60,14 +67,19 @@ def consume_state(state: str) -> bool:
     return False
 
 
-def build_authorize_url(client_id: str, redirect_uri: str, state: str) -> str:
+def build_authorize_url(
+    client_id: str,
+    redirect_uri: str,
+    state: str,
+    scope: str = SCOPES_MEMBER,
+) -> str:
     qs = urllib.parse.urlencode(
         {
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "state": state,
-            "scope": SCOPES,
+            "scope": scope,
         }
     )
     return f"{AUTHORIZE_URL}?{qs}"
@@ -248,6 +260,78 @@ def create_image_post(
         )
         resp.raise_for_status()
     return _extract_post_urn(resp)
+
+
+def list_administered_organizations(access_token: str) -> list[dict]:
+    """Call /rest/organizationalEntityAcls?q=roleAssignee to find every
+    organization the authenticated member is ADMINISTRATOR on. Then resolve
+    each org URN to a name + logo via /rest/organizations/{id}.
+
+    Returns a list of {urn, name, logo_url, role}. Empty list on any failure
+    short of a total auth blowup.
+    """
+    headers = _auth_headers(access_token, json_body=False)
+    out: list[dict] = []
+
+    try:
+        resp = requests.get(
+            ORG_ACLS_URL,
+            params={
+                "q": "roleAssignee",
+                "role": "ADMINISTRATOR",
+                "state": "APPROVED",
+            },
+            headers=headers,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        log.exception("organizationalEntityAcls failed")
+        return []
+
+    elements = data.get("elements") or []
+    for el in elements:
+        target = el.get("organizationalTarget") or el.get("organization")
+        role = el.get("role")
+        if not target:
+            continue
+
+        # Resolve name + logo by ID
+        if target.startswith("urn:li:organization:"):
+            org_id = target.rsplit(":", 1)[-1]
+            try:
+                r2 = requests.get(
+                    f"{ORGANIZATIONS_URL}/{org_id}",
+                    headers=headers,
+                    timeout=30,
+                )
+                r2.raise_for_status()
+                org = r2.json()
+            except Exception:
+                log.warning("couldn't resolve org %s", target, exc_info=True)
+                out.append({"urn": target, "name": target, "logo_url": None, "role": role})
+                continue
+
+            name = org.get("localizedName") or org.get("name") or target
+            logo_url: Optional[str] = None
+            logo = org.get("logoV2") or {}
+            # The logo tree is nested / versioned; dig a canonical URL out best-effort
+            try:
+                orig = logo.get("original~") or {}
+                elements_inner = orig.get("elements") or []
+                if elements_inner:
+                    ids = elements_inner[0].get("identifiers") or []
+                    if ids:
+                        logo_url = ids[0].get("identifier")
+            except Exception:
+                pass
+
+            out.append({"urn": target, "name": name, "logo_url": logo_url, "role": role})
+        else:
+            out.append({"urn": target, "name": target, "logo_url": None, "role": role})
+
+    return out
 
 
 def publish_post_with_optional_image(

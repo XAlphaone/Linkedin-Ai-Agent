@@ -63,6 +63,12 @@ class Config(BaseModel):
     linkedin_client_secret: str = ""
     linkedin_redirect_uri: str = "http://127.0.0.1:8765/auth/linkedin/callback"
 
+    # Separate LinkedIn app for Community Management API (company page posts).
+    # LinkedIn requires it to be a distinct app from the member-scope one.
+    linkedin_org_client_id: str = ""
+    linkedin_org_client_secret: str = ""
+    linkedin_org_redirect_uri: str = "http://127.0.0.1:8765/auth/linkedin/org/callback"
+
     ingest_token: str = ""  # gates POST /ingest; if empty, endpoint is disabled
 
 
@@ -82,5 +88,10 @@ def load_config(
     env_redirect = os.environ.get("LINKEDIN_REDIRECT_URI", "").strip()
     if env_redirect:
         data["linkedin_redirect_uri"] = env_redirect
+    data["linkedin_org_client_id"] = os.environ.get("LINKEDIN_ORG_CLIENT_ID", "")
+    data["linkedin_org_client_secret"] = os.environ.get("LINKEDIN_ORG_CLIENT_SECRET", "")
+    env_org_redirect = os.environ.get("LINKEDIN_ORG_REDIRECT_URI", "").strip()
+    if env_org_redirect:
+        data["linkedin_org_redirect_uri"] = env_org_redirect
     data["ingest_token"] = os.environ.get("INGEST_TOKEN", "")
     return Config.model_validate(data)

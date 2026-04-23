@@ -413,6 +413,30 @@ main {
 .kv .v { color: var(--text); }
 a.btn { text-decoration: none; display: inline-block; }
 
+.org-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.org-list li {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.org-list li:last-child { border-bottom: 0; }
+.org-logo {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.org-logo.placeholder { background: var(--surface2); }
+.org-name {
+  font-family: var(--serif);
+  font-size: 15px;
+  color: var(--text);
+}
+
 /* ---------- events page ---------- */
 .events-toolbar {
   display: flex;

@@ -687,10 +687,126 @@ def create_app(cfg: Config) -> FastAPI:
         db.clear_linkedin_auth()
         return RedirectResponse(url="/settings", status_code=303)
 
+    # ---- Org OAuth (second LinkedIn app, Community Management API) ----
+
+    @app.get("/auth/linkedin/org/start")
+    def linkedin_org_start():
+        from agent.linkedin import api as li_api
+
+        if not cfg.linkedin_org_client_id or not cfg.linkedin_org_client_secret:
+            raise HTTPException(
+                status_code=400,
+                detail="LINKEDIN_ORG_CLIENT_ID / LINKEDIN_ORG_CLIENT_SECRET not set in .env",
+            )
+        state = li_api.new_state()
+        url = li_api.build_authorize_url(
+            client_id=cfg.linkedin_org_client_id,
+            redirect_uri=cfg.linkedin_org_redirect_uri,
+            state=state,
+            scope=li_api.SCOPES_ORG,
+        )
+        return RedirectResponse(url=url, status_code=302)
+
+    @app.get("/auth/linkedin/org/callback")
+    def linkedin_org_callback(
+        code: Optional[str] = None,
+        state: Optional[str] = None,
+        error: Optional[str] = None,
+        error_description: Optional[str] = None,
+    ):
+        from agent.linkedin import api as li_api
+
+        if error:
+            log.error("LinkedIn org OAuth error: %s — %s", error, error_description)
+            raise HTTPException(status_code=400, detail=f"LinkedIn error: {error} — {error_description}")
+        if not code or not state:
+            raise HTTPException(status_code=400, detail="missing code or state")
+        if not li_api.consume_state(state):
+            raise HTTPException(status_code=400, detail="invalid or expired state (possible CSRF)")
+
+        try:
+            token_payload = li_api.exchange_code(
+                code=code,
+                client_id=cfg.linkedin_org_client_id,
+                client_secret=cfg.linkedin_org_client_secret,
+                redirect_uri=cfg.linkedin_org_redirect_uri,
+            )
+        except Exception:
+            log.exception("org token exchange failed")
+            raise HTTPException(status_code=502, detail="token exchange failed — see server.log")
+
+        access_token = token_payload.get("access_token")
+        expires_in = int(token_payload.get("expires_in", 0))
+        scopes = token_payload.get("scope", "")
+        if not access_token:
+            raise HTTPException(status_code=502, detail="no access_token in LinkedIn response")
+
+        # Fetch authorizing member info (nice for display — "Authorized by Francisco Salvat")
+        member_urn, member_name = None, None
+        try:
+            info = li_api.get_userinfo(access_token)
+            sub = info.get("sub")
+            if sub:
+                member_urn = li_api.urn_from_sub(sub)
+            member_name = info.get("name") or None
+        except Exception:
+            log.warning("org userinfo lookup failed; continuing without authorizing-member display")
+
+        db.save_linkedin_org_auth(
+            access_token=access_token,
+            expires_at=li_api.expires_at_from_expires_in(expires_in),
+            scopes=scopes,
+            authorized_by_urn=member_urn,
+            authorized_by_name=member_name,
+        )
+
+        # Discover admin orgs and persist
+        try:
+            orgs = li_api.list_administered_organizations(access_token)
+        except Exception:
+            log.exception("org discovery failed")
+            orgs = []
+        for o in orgs:
+            db.upsert_organization(
+                urn=o["urn"], name=o["name"], logo_url=o.get("logo_url"), role=o.get("role"),
+            )
+        log.info(
+            "LinkedIn org connected: authorized_by=%s discovered %d org(s), expires in %ds",
+            member_name or "?", len(orgs), expires_in,
+        )
+        return RedirectResponse(url="/settings", status_code=303)
+
+    @app.post("/auth/linkedin/org/disconnect")
+    def linkedin_org_disconnect():
+        db.clear_linkedin_org_auth()
+        return RedirectResponse(url="/settings", status_code=303)
+
+    @app.post("/auth/linkedin/org/refresh_orgs")
+    def linkedin_org_refresh_orgs():
+        """Re-call /organizationalEntityAcls without re-doing OAuth. Useful
+        if the user gets granted admin on a new page after the initial connect."""
+        from agent.linkedin import api as li_api
+        auth = db.get_linkedin_org_auth()
+        if not auth:
+            raise HTTPException(status_code=400, detail="org auth not connected")
+        try:
+            orgs = li_api.list_administered_organizations(auth["access_token"])
+        except Exception:
+            log.exception("org refresh failed")
+            raise HTTPException(status_code=502, detail="refresh failed — see server.log")
+        for o in orgs:
+            db.upsert_organization(
+                urn=o["urn"], name=o["name"], logo_url=o.get("logo_url"), role=o.get("role"),
+            )
+        return RedirectResponse(url="/settings", status_code=303)
+
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
         auth = db.get_linkedin_auth()
         configured = bool(cfg.linkedin_client_id and cfg.linkedin_client_secret)
+        org_auth = db.get_linkedin_org_auth()
+        org_configured = bool(cfg.linkedin_org_client_id and cfg.linkedin_org_client_secret)
+        organizations = db.list_organizations() if org_auth else []
         return TEMPLATES.TemplateResponse(
             "settings.html",
             {
@@ -698,6 +814,10 @@ def create_app(cfg: Config) -> FastAPI:
                 "auth": auth,
                 "configured": configured,
                 "redirect_uri": cfg.linkedin_redirect_uri,
+                "org_auth": org_auth,
+                "org_configured": org_configured,
+                "org_redirect_uri": cfg.linkedin_org_redirect_uri,
+                "organizations": organizations,
                 "ingest_enabled": bool(cfg.ingest_token),
                 "active": "settings",
             },

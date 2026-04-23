@@ -51,6 +51,67 @@
 </section>
 
 <section class="panel">
+  <h2>LinkedIn company pages</h2>
+
+  {% if not org_configured %}
+    <p class="empty">
+      <code class="mono">LINKEDIN_ORG_CLIENT_ID</code> /
+      <code class="mono">LINKEDIN_ORG_CLIENT_SECRET</code> are not set in
+      <code class="mono">.env</code>. LinkedIn requires a <b>separate</b>
+      developer app for company-page posting (Community Management API);
+      create one, add those creds, and restart the server.
+    </p>
+    <p class="hint">
+      When creating the second app, register this redirect URL under
+      <b>Auth → Authorized redirect URLs</b>:<br>
+      <code class="mono">{{ org_redirect_uri }}</code>
+    </p>
+
+  {% elif org_auth %}
+    <div class="kv">
+      <div><span class="k">Authorized by</span><span class="v">{{ org_auth.authorized_by_name or org_auth.authorized_by_urn or '(unknown)' }}</span></div>
+      <div><span class="k">Scopes</span><span class="v mono">{{ org_auth.scopes }}</span></div>
+      <div><span class="k">Token expires</span><span class="v mono">{{ org_auth.expires_at }}</span></div>
+      <div><span class="k">Connected at</span><span class="v mono">{{ org_auth.created_at }}</span></div>
+    </div>
+    <form method="post" action="/auth/linkedin/org/disconnect" class="actions">
+      <button type="submit" class="btn ghost">Disconnect</button>
+      <a href="/auth/linkedin/org/start" class="btn ghost">Reconnect</a>
+      <button formaction="/auth/linkedin/org/refresh_orgs" class="btn">Refresh org list</button>
+    </form>
+
+    <h3 style="margin-top:24px; font-family:var(--serif); font-weight:500; font-size:18px;">Administered organizations</h3>
+    {% if organizations %}
+      <ul class="org-list">
+        {% for o in organizations %}
+          <li>
+            {% if o.logo_url %}
+              <img src="{{ o.logo_url }}" class="org-logo" alt="">
+            {% else %}
+              <div class="org-logo placeholder"></div>
+            {% endif %}
+            <div>
+              <div class="org-name">{{ o.name }}</div>
+              <div class="mono small">{{ o.urn }} · {{ o.role or 'admin' }}</div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Connected, but no administered organizations found. Make sure your account is listed as Admin or Super Admin on the company page, then click <b>Refresh org list</b>.</p>
+    {% endif %}
+
+  {% else %}
+    <p>Not connected. Click below to authorize the second (Community Management) app.</p>
+    <p class="hint">
+      Redirect URI registered with the org app:
+      <code class="mono">{{ org_redirect_uri }}</code>
+    </p>
+    <a href="/auth/linkedin/org/start" class="btn">Connect company-page app</a>
+  {% endif %}
+</section>
+
+<section class="panel">
   <h2>Telemetry ingest</h2>
 
   {% if not ingest_enabled %}

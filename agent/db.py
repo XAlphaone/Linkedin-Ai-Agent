@@ -89,6 +89,29 @@ CREATE TABLE IF NOT EXISTS linkedin_auth (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Second LinkedIn app (Community Management API) for posting as a company
+-- page. LinkedIn legally prohibits mixing personal + org scopes in one app,
+-- so two OAuth flows + two token singletons.
+CREATE TABLE IF NOT EXISTS linkedin_org_auth (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    authorized_by_urn TEXT,
+    authorized_by_name TEXT,
+    access_token TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    scopes TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Organizations the authorizing user administers. Discovered via
+-- /rest/organizationalEntityAcls after the org OAuth flow completes.
+CREATE TABLE IF NOT EXISTS linkedin_organizations (
+    urn TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    logo_url TEXT,
+    role TEXT,
+    discovered_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 CREATE INDEX IF NOT EXISTS idx_events_processed ON repo_events(processed);
 """
@@ -120,6 +143,9 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
             conn.execute("ALTER TABLE posts ADD COLUMN image_path TEXT")
         if "linkedin_post_urn" not in existing_post_cols:
             conn.execute("ALTER TABLE posts ADD COLUMN linkedin_post_urn TEXT")
+        if "publish_target_urn" not in existing_post_cols:
+            # urn:li:person:... for personal, urn:li:organization:... for a page.
+            conn.execute("ALTER TABLE posts ADD COLUMN publish_target_urn TEXT")
 
 
 # -------------------- repos --------------------
@@ -487,6 +513,82 @@ def get_linkedin_auth() -> Optional[dict]:
 def clear_linkedin_auth() -> None:
     with connect() as conn:
         conn.execute("DELETE FROM linkedin_auth WHERE id = 1")
+
+
+# -------------------- linkedin_org_auth (singleton id=1) --------------------
+
+def save_linkedin_org_auth(
+    access_token: str,
+    expires_at: str,
+    scopes: str,
+    authorized_by_urn: Optional[str],
+    authorized_by_name: Optional[str],
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO linkedin_org_auth
+                (id, authorized_by_urn, authorized_by_name, access_token, expires_at, scopes)
+            VALUES (1, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                authorized_by_urn = excluded.authorized_by_urn,
+                authorized_by_name = excluded.authorized_by_name,
+                access_token = excluded.access_token,
+                expires_at = excluded.expires_at,
+                scopes = excluded.scopes,
+                created_at = CURRENT_TIMESTAMP
+            """,
+            (authorized_by_urn, authorized_by_name, access_token, expires_at, scopes),
+        )
+
+
+def get_linkedin_org_auth() -> Optional[dict]:
+    with connect() as conn:
+        return conn.execute("SELECT * FROM linkedin_org_auth WHERE id = 1").fetchone()
+
+
+def clear_linkedin_org_auth() -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM linkedin_org_auth WHERE id = 1")
+        # Purge discovered orgs too — they come with the token
+        conn.execute("DELETE FROM linkedin_organizations")
+
+
+# -------------------- linkedin_organizations --------------------
+
+def upsert_organization(
+    urn: str,
+    name: str,
+    logo_url: Optional[str],
+    role: Optional[str],
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO linkedin_organizations (urn, name, logo_url, role)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(urn) DO UPDATE SET
+                name = excluded.name,
+                logo_url = excluded.logo_url,
+                role = excluded.role,
+                discovered_at = CURRENT_TIMESTAMP
+            """,
+            (urn, name, logo_url, role),
+        )
+
+
+def list_organizations() -> list[dict]:
+    with connect() as conn:
+        return list(conn.execute(
+            "SELECT * FROM linkedin_organizations ORDER BY name"
+        ).fetchall())
+
+
+def get_organization(urn: str) -> Optional[dict]:
+    with connect() as conn:
+        return conn.execute(
+            "SELECT * FROM linkedin_organizations WHERE urn = ?", (urn,)
+        ).fetchone()
 
 
 def pending_groups() -> list[list[dict]]:
