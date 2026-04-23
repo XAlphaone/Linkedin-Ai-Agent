@@ -62,16 +62,16 @@ def fetch_events(repo: dict, github_token: str) -> tuple[int, Optional[str]]:
         log.warning("github commits fetch failed for %s/%s: %s", owner, name, e)
         commits = []
 
-    new_commits = []
-    for c in commits:
-        if last_sha and c.get("sha") == last_sha:
-            break
-        new_commits.append(c)
+    # Intentionally do NOT early-exit at last_sha here. The old logic broke
+    # when the commit window was widened retroactively (repos that had only
+    # 1 qualifying commit under a 7d window had last_sha set to that commit,
+    # so after moving to a 365d window the loop exited immediately and the
+    # 99 newly-in-window older commits were never inserted). The
+    # UNIQUE(repo_id, sha, event_type) constraint dedupes for us cheaply.
+    if commits:
+        newest_sha = commits[0].get("sha") or newest_sha
 
-    if new_commits:
-        newest_sha = new_commits[0].get("sha") or newest_sha
-
-    for c in reversed(new_commits):
+    for c in reversed(commits):
         msg = (c.get("commit") or {}).get("message") or ""
         title, _, body = msg.partition("\n")
         author_info = (c.get("commit") or {}).get("author") or {}
