@@ -531,6 +531,48 @@ a.btn { text-decoration: none; display: inline-block; }
 }
 .event-files .file.more { color: var(--accent); }
 
+/* ---------- compose page ---------- */
+.compose-form textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 14px;
+  resize: vertical;
+  line-height: 1.6;
+  min-height: 180px;
+}
+.compose-actions {
+  display: flex;
+  align-items: center;
+  margin-top: 12px;
+  gap: 16px;
+}
+.compose-actions .hint {
+  color: var(--muted);
+  font-size: 12px;
+  flex: 1;
+}
+.recent-topics { list-style: none; padding: 0; margin: 0; }
+.recent-topics li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.recent-topics li:last-child { border-bottom: 0; }
+.recent-topics .t-head {
+  display: flex;
+  gap: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.recent-topics .t-body {
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .job-banner {
   display: flex;
   align-items: center;

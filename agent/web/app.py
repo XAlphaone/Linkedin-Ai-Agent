@@ -203,6 +203,47 @@ def create_app(cfg: Config) -> FastAPI:
         background_tasks.add_task(_run_generate, None, "all unprocessed")
         return RedirectResponse(url="/", status_code=303)
 
+    @app.get("/compose", response_class=HTMLResponse)
+    def compose_page(request: Request):
+        recent = db.recent_compose_topics(limit=10)
+        return TEMPLATES.TemplateResponse(
+            "compose.html",
+            {
+                "request": request,
+                "recent": recent,
+                "active": "compose",
+            },
+        )
+
+    @app.post("/actions/compose_generate")
+    def compose_generate(
+        background_tasks: BackgroundTasks,
+        topic: str = Form(...),
+    ):
+        text = (topic or "").strip()
+        if not text:
+            return RedirectResponse(url="/compose", status_code=303)
+
+        topic_id = db.save_compose_topic(text)
+        from datetime import datetime, timezone
+        synthetic_event = {
+            "id": 0,  # zero = not a real repo_events row; mark_events_processed no-ops
+            "repo_name": "compose",
+            "event_type": "topic",
+            "sha": None,
+            "title": text[:80],
+            "body": text,
+            "files_changed": [],
+            "author": None,
+            "event_timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        background_tasks.add_task(
+            _run_generate,
+            [synthetic_event],
+            f"compose topic #{topic_id}",
+        )
+        return RedirectResponse(url="/", status_code=303)
+
     @app.get("/events", response_class=HTMLResponse)
     def events_page(request: Request):
         groups = db.unprocessed_events_by_repo()

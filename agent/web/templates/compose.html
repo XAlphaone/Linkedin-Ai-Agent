@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Compose — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>Compose</h1>
+  <div class="sub">
+    write a thought, paste a link, sketch an argument · 3 variants come back
+  </div>
+</section>
+
+<section class="panel">
+  <form method="post" action="/actions/compose_generate" class="compose-form">
+    <textarea
+      name="topic"
+      rows="10"
+      placeholder="Type anything here. A rough observation, a reaction to a paper you read, a decision you just made, a pattern you've noticed. Grok will take it from here, in your voice, across the three angles (technical_peer / decision_maker / mixed_story). Longer and more specific is almost always better."
+      required></textarea>
+    <div class="compose-actions">
+      <span class="hint">Minimum ~50 chars lands better posts · no character cap</span>
+      <button type="submit" class="btn">Generate 3 variants</button>
+    </div>
+  </form>
+</section>
+
+{% if recent %}
+<section class="panel">
+  <h2>Recent topics</h2>
+  <ul class="recent-topics">
+    {% for t in recent %}
+      <li>
+        <div class="t-head">
+          <span class="mono small">#{{ t.id }}</span>
+          <span class="mono small">{{ t.created_at[:19].replace('T', ' ') }}</span>
+        </div>
+        <div class="t-body">{{ t.text[:280] }}{% if t.text|length > 280 %}…{% endif %}</div>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% endblock %}

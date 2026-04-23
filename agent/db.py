@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS engagement (
     followers_delta INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS compose_topics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    text TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS linkedin_auth (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     member_urn TEXT NOT NULL,
@@ -375,6 +381,25 @@ def set_post_linkedin_urn(post_id: int, urn: Optional[str]) -> None:
             "UPDATE posts SET linkedin_post_urn = ? WHERE id = ?",
             (urn, post_id),
         )
+
+
+# -------------------- compose_topics --------------------
+
+def save_compose_topic(text: str) -> int:
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO compose_topics (text) VALUES (?)",
+            (text,),
+        )
+        return cur.lastrowid
+
+
+def recent_compose_topics(limit: int = 10) -> list[dict]:
+    with connect() as conn:
+        return list(conn.execute(
+            "SELECT * FROM compose_topics ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall())
 
 
 # -------------------- linkedin_auth (singleton row, id = 1) --------------------
