@@ -50,4 +50,39 @@
   {% endif %}
 </section>
 
+<section class="panel">
+  <h2>Telemetry ingest</h2>
+
+  {% if not ingest_enabled %}
+    <p class="empty">
+      <code class="mono">INGEST_TOKEN</code> is not set in <code class="mono">.env</code>.
+      The <code class="mono">POST /ingest</code> endpoint will return 503 until
+      you set it. Pick any opaque string.
+    </p>
+  {% else %}
+    <p>
+      Ingest is <b>active</b>. Your live systems can POST events to
+      <code class="mono">http://127.0.0.1:8765/ingest</code> and they'll show
+      up on <a href="/events">/events</a> grouped by <code class="mono">source</code>.
+    </p>
+
+    <p class="hint">Example from a shell script or Python cron:</p>
+<pre class="code-block">curl -X POST http://127.0.0.1:8765/ingest \
+  -H "Content-Type: application/json" \
+  -H "X-Ingest-Token: $INGEST_TOKEN" \
+  -d '{
+    "source": "blitzpicks",
+    "event_type": "weekly_accuracy",
+    "id": "2026-04-22-nba-weekly",
+    "title": "Weekly NBA prop accuracy hit 84.1% (+1.9% WoW)",
+    "body": "2,847 props graded. XGB-only baseline 82.3% vs ensemble 84.1%. Largest gap on 3PM and blocks — LSTM is catching fatigue patterns the tree models miss."
+  }'</pre>
+
+    <p class="hint">
+      <b>id</b> is the dedup key — same id + same source = same event, silently
+      ignored. Omit it and a content hash is used instead.
+    </p>
+  {% endif %}
+</section>
+
 {% endblock %}

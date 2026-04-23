@@ -19,7 +19,7 @@ class Author(BaseModel):
 
 class RepoConfig(BaseModel):
     name: str
-    type: Literal["local", "github", "rss"]
+    type: Literal["local", "github", "rss", "telemetry"]
     path: Optional[str] = None
     url: Optional[str] = None
     branch: str = "main"
@@ -63,6 +63,8 @@ class Config(BaseModel):
     linkedin_client_secret: str = ""
     linkedin_redirect_uri: str = "http://127.0.0.1:8765/auth/linkedin/callback"
 
+    ingest_token: str = ""  # gates POST /ingest; if empty, endpoint is disabled
+
 
 def load_config(
     config_path: str | Path = "config.yaml",
@@ -80,4 +82,5 @@ def load_config(
     env_redirect = os.environ.get("LINKEDIN_REDIRECT_URI", "").strip()
     if env_redirect:
         data["linkedin_redirect_uri"] = env_redirect
+    data["ingest_token"] = os.environ.get("INGEST_TOKEN", "")
     return Config.model_validate(data)

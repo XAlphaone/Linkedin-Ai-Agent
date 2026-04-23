@@ -134,7 +134,9 @@ def upsert_repo(
             """,
             (name, type_, path_or_url, branch, 1 if enabled else 0),
         )
-        return get_repo_by_name(name)
+        # Must fetch via the same connection — a separate conn would not see
+        # this uncommitted INSERT, causing fresh-insert upserts to return None.
+        return conn.execute("SELECT * FROM repos WHERE name = ?", (name,)).fetchone()
 
 
 def list_repos(enabled_only: bool = False) -> list[dict]:

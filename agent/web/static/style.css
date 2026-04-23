@@ -531,6 +531,18 @@ a.btn { text-decoration: none; display: inline-block; }
 }
 .event-files .file.more { color: var(--accent); }
 
+pre.code-block {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+  overflow-x: auto;
+  margin: 8px 0 12px;
+}
+
 /* ---------- compose page ---------- */
 .compose-form textarea {
   width: 100%;

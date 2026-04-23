@@ -8,8 +8,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi import BackgroundTasks, FastAPI, Form, Header, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel, Field
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -21,6 +22,18 @@ log = logging.getLogger(__name__)
 
 _HERE = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=str(_HERE / "templates"))
+
+
+class IngestEvent(BaseModel):
+    """Payload for POST /ingest from external systems like BlitzPicks,
+    the trading agent, etc. One event per call."""
+
+    source: str = Field(..., min_length=1, max_length=100, description="Short slug for the emitting system, e.g. 'blitzpicks'")
+    event_type: str = Field(..., min_length=1, max_length=100, description="What kind of event this is, e.g. 'weekly_accuracy'")
+    title: str = Field(..., min_length=1, max_length=500)
+    body: Optional[str] = Field(None, max_length=10000)
+    id: Optional[str] = Field(None, max_length=200, description="Dedup key. If omitted, a content hash is used.")
+    timestamp: Optional[str] = Field(None, description="ISO 8601 UTC. Defaults to now.")
 
 
 ANGLE_LABELS: dict[str, dict[str, str]] = {
@@ -111,6 +124,76 @@ def create_app(cfg: Config) -> FastAPI:
                 "job": job,
                 "active": "queue",
             },
+        )
+
+    @app.post("/ingest")
+    def ingest_event(
+        payload: IngestEvent,
+        x_ingest_token: Optional[str] = Header(None),
+    ):
+        """Accept a telemetry event from an external system and turn it into a
+        repo_event. Creates a synthetic repo row per `source` on first use.
+
+        Auth: requires X-Ingest-Token header matching INGEST_TOKEN from .env.
+        Returns 204 on success, 401 on auth failure, 503 if ingest disabled.
+        """
+        if not cfg.ingest_token:
+            raise HTTPException(
+                status_code=503,
+                detail="ingest disabled — set INGEST_TOKEN in .env to enable",
+            )
+        if not x_ingest_token or x_ingest_token != cfg.ingest_token:
+            raise HTTPException(status_code=401, detail="invalid or missing X-Ingest-Token")
+
+        from datetime import datetime, timezone
+        import hashlib
+
+        # Upsert a synthetic repo for this source. path_or_url carries the
+        # source slug — nothing fetches it, it's just bookkeeping.
+        repo_row = db.upsert_repo(
+            name=payload.source,
+            type_="telemetry",
+            path_or_url=f"telemetry:{payload.source}",
+            branch="",
+            enabled=True,
+        )
+
+        # Dedup key: use caller-supplied id, else hash of event_type + title
+        if payload.id:
+            sha = payload.id
+        else:
+            hasher = hashlib.sha256()
+            hasher.update(payload.event_type.encode("utf-8"))
+            hasher.update(b"|")
+            hasher.update(payload.title.encode("utf-8"))
+            sha = hasher.hexdigest()[:40]
+
+        ts = payload.timestamp or datetime.now(timezone.utc).isoformat()
+
+        row_id = db.insert_event(
+            repo_id=repo_row["id"],
+            event_type=payload.event_type,
+            sha=sha,
+            title=payload.title,
+            body=payload.body,
+            files_changed=None,
+            author=None,
+            event_timestamp=ts,
+        )
+        if row_id is None:
+            return JSONResponse(
+                status_code=200,
+                content={"status": "duplicate", "source": payload.source, "id": sha},
+            )
+        log.info(
+            "ingested %s/%s id=%s",
+            payload.source,
+            payload.event_type,
+            sha[:12],
+        )
+        return JSONResponse(
+            status_code=201,
+            content={"status": "created", "event_id": row_id, "source": payload.source},
         )
 
     @app.get("/api/job_status")
@@ -475,6 +558,7 @@ def create_app(cfg: Config) -> FastAPI:
                 "auth": auth,
                 "configured": configured,
                 "redirect_uri": cfg.linkedin_redirect_uri,
+                "ingest_enabled": bool(cfg.ingest_token),
                 "active": "settings",
             },
         )
