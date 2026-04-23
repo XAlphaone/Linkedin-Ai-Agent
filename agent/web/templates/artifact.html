@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Artifact — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>Artifact</h1>
+  <div class="sub">
+    drop a link, an image, or your take on either · 3 post variants come back
+  </div>
+</section>
+
+<section class="panel">
+  <form method="post" action="/actions/artifact_generate" enctype="multipart/form-data" class="artifact-form">
+    <label class="field">
+      <span class="label-text">URL (optional)</span>
+      <input
+        type="url"
+        name="url"
+        placeholder="https://example.com/article-you-read"
+        class="artifact-input">
+      <span class="hint">Any article, PR, blog post, paper, doc. The agent fetches it, extracts the main text, and feeds it to the generator.</span>
+    </label>
+
+    <label class="field">
+      <span class="label-text">Image (optional)</span>
+      <input
+        type="file"
+        name="image"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        class="artifact-input file">
+      <span class="hint">Screenshot of a dashboard, a diagram, a chart, a graph. Grok's vision model describes it, then the generator builds posts around that description. Up to 15 MB, PNG/JPG/GIF/WebP.</span>
+    </label>
+
+    <label class="field">
+      <span class="label-text">Your take (optional but recommended)</span>
+      <textarea
+        name="note"
+        rows="6"
+        placeholder="A line or two about why this matters to you, what you noticed, what you'd push back on. Giving the generator your angle almost always produces a sharper post than the raw artifact alone."
+        class="artifact-input"></textarea>
+    </label>
+
+    <div class="artifact-actions">
+      <span class="hint">At least one of URL / image / take is required.</span>
+      <button type="submit" class="btn">Generate 3 variants</button>
+    </div>
+  </form>
+</section>
+
+{% if recent %}
+<section class="panel">
+  <h2>Recent artifacts</h2>
+  <ul class="recent-artifacts">
+    {% for a in recent %}
+      <li>
+        <div class="a-head">
+          <span class="mono small">#{{ a.id }}</span>
+          <span class="mono small">{{ a.created_at[:19].replace('T', ' ') }}</span>
+        </div>
+        {% if a.image_path %}
+          <a href="/artifacts/{{ a.id }}/image" target="_blank">
+            <img src="/artifacts/{{ a.id }}/image" class="a-thumb" alt="artifact image">
+          </a>
+        {% endif %}
+        {% if a.url %}
+          <div class="a-url"><a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.url }}</a></div>
+        {% endif %}
+        {% if a.note %}
+          <div class="a-note">{{ a.note[:240] }}{% if a.note|length > 240 %}…{% endif %}</div>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% endblock %}

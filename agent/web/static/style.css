@@ -585,6 +585,82 @@ pre.code-block {
   white-space: pre-wrap;
 }
 
+/* ---------- artifact page ---------- */
+.artifact-form .field {
+  display: block;
+  margin-bottom: 20px;
+}
+.artifact-form .label-text {
+  display: block;
+  font-family: var(--serif);
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.artifact-form .hint {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.artifact-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 13.5px;
+}
+textarea.artifact-input {
+  line-height: 1.6;
+  resize: vertical;
+}
+.artifact-input.file {
+  padding: 8px 12px;
+  font-family: inherit;
+}
+.artifact-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+}
+.artifact-actions .hint { flex: 1; font-size: 12px; color: var(--muted); }
+
+.recent-artifacts { list-style: none; padding: 0; margin: 0; }
+.recent-artifacts li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.recent-artifacts li:last-child { border-bottom: 0; }
+.recent-artifacts .a-head {
+  display: flex;
+  gap: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.recent-artifacts .a-thumb {
+  max-width: 360px;
+  max-height: 160px;
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  display: block;
+}
+.recent-artifacts .a-url a {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+.recent-artifacts .a-note {
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  margin-top: 4px;
+}
+
 .job-banner {
   display: flex;
   align-items: center;

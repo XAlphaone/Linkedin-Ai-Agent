@@ -69,6 +69,16 @@ CREATE TABLE IF NOT EXISTS compose_topics (
     text TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    url TEXT,
+    image_path TEXT,
+    note TEXT,
+    extracted_text TEXT,
+    image_description TEXT
+);
+
 CREATE TABLE IF NOT EXISTS linkedin_auth (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     member_urn TEXT NOT NULL,
@@ -400,6 +410,45 @@ def recent_compose_topics(limit: int = 10) -> list[dict]:
     with connect() as conn:
         return list(conn.execute(
             "SELECT * FROM compose_topics ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall())
+
+
+# -------------------- artifacts (URL + image + note → post) --------------------
+
+def save_artifact(
+    url: Optional[str],
+    image_path: Optional[str],
+    note: Optional[str],
+) -> int:
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO artifacts (url, image_path, note) VALUES (?, ?, ?)",
+            (url, image_path, note),
+        )
+        return cur.lastrowid
+
+
+def update_artifact_extraction(artifact_id: int, extracted_text: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE artifacts SET extracted_text = ? WHERE id = ?",
+            (extracted_text, artifact_id),
+        )
+
+
+def update_artifact_image_description(artifact_id: int, description: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE artifacts SET image_description = ? WHERE id = ?",
+            (description, artifact_id),
+        )
+
+
+def recent_artifacts(limit: int = 10) -> list[dict]:
+    with connect() as conn:
+        return list(conn.execute(
+            "SELECT * FROM artifacts ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall())
 

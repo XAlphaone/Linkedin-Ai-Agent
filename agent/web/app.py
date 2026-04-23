@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, Form, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +22,10 @@ log = logging.getLogger(__name__)
 
 _HERE = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=str(_HERE / "templates"))
+
+ARTIFACT_DIR = Path("data/artifacts")
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+MAX_IMAGE_BYTES = 15 * 1024 * 1024  # 15 MB is plenty for LinkedIn-sized images
 
 
 class IngestEvent(BaseModel):
@@ -78,6 +82,76 @@ def create_app(cfg: Config) -> FastAPI:
             generate_variants_job(cfg, events=events)
         except Exception:
             log.exception("background generate failed")
+        finally:
+            _set_job(None)
+            _gen_lock.release()
+
+    def _run_artifact_generate(
+        artifact_id: int,
+        url: Optional[str],
+        image_path: Optional[str],
+        note: Optional[str],
+    ) -> None:
+        """Full artifact pipeline in background: fetch URL, describe image,
+        combine with note, run the normal generator."""
+        from agent.scheduler import generate_variants_job
+
+        if not _gen_lock.acquire(blocking=False):
+            log.info("generation already running; ignoring artifact trigger")
+            return
+        try:
+            _set_job("generating", f"artifact #{artifact_id}")
+            url_data = None
+            if url:
+                from agent.artifacts.url_fetcher import fetch_and_extract
+                url_data = fetch_and_extract(url)
+                db.update_artifact_extraction(artifact_id, url_data.get("text") or "")
+
+            image_description: Optional[str] = None
+            if image_path:
+                from agent.artifacts.image_describer import describe_image
+                image_description = describe_image(cfg, Path(image_path))
+                if image_description:
+                    db.update_artifact_image_description(artifact_id, image_description)
+
+            # Build the synthetic event
+            parts: list[str] = []
+            chosen_title = ""
+            if note:
+                parts.append(f"My take:\n{note}")
+                chosen_title = note[:80]
+            if url:
+                url_block = [f"URL: {url}"]
+                if url_data and url_data.get("title"):
+                    url_block.append(f"Page title: {url_data['title']}")
+                    if not chosen_title:
+                        chosen_title = url_data["title"][:80]
+                if url_data and url_data.get("error"):
+                    url_block.append(f"(fetch note: {url_data['error']})")
+                if url_data and url_data.get("text"):
+                    url_block.append(f"Page content:\n{url_data['text']}")
+                parts.append("\n".join(url_block))
+            if image_description:
+                parts.append(f"Image description:\n{image_description}")
+                if not chosen_title:
+                    chosen_title = "Artifact (image)"
+
+            body = "\n\n---\n\n".join(parts) if parts else ""
+            from datetime import datetime, timezone
+            synthetic_event = {
+                "id": 0,
+                "repo_name": "artifact",
+                "event_type": "artifact",
+                "sha": None,
+                "title": chosen_title or f"artifact #{artifact_id}",
+                "body": body,
+                "files_changed": [],
+                "author": None,
+                "event_timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            generate_variants_job(cfg, events=[synthetic_event])
+        except Exception:
+            log.exception("artifact generate failed for id=%d", artifact_id)
         finally:
             _set_job(None)
             _gen_lock.release()
@@ -285,6 +359,72 @@ def create_app(cfg: Config) -> FastAPI:
         # while Grok drafts 3 posts + 3 images.
         background_tasks.add_task(_run_generate, None, "all unprocessed")
         return RedirectResponse(url="/", status_code=303)
+
+    @app.get("/artifact", response_class=HTMLResponse)
+    def artifact_page(request: Request):
+        recent = db.recent_artifacts(limit=6)
+        return TEMPLATES.TemplateResponse(
+            "artifact.html",
+            {
+                "request": request,
+                "recent": recent,
+                "active": "artifact",
+            },
+        )
+
+    @app.post("/actions/artifact_generate")
+    async def artifact_generate(
+        background_tasks: BackgroundTasks,
+        url: Optional[str] = Form(None),
+        note: Optional[str] = Form(None),
+        image: Optional[UploadFile] = File(None),
+    ):
+        url_clean = (url or "").strip() or None
+        note_clean = (note or "").strip() or None
+
+        image_path: Optional[str] = None
+        if image and image.filename:
+            ext = Path(image.filename).suffix.lower()
+            if ext not in ALLOWED_IMAGE_EXTENSIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"image must be one of {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))}",
+                )
+            ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+            # Read with a size cap to avoid memory blowup on huge uploads
+            raw = await image.read(MAX_IMAGE_BYTES + 1)
+            if len(raw) > MAX_IMAGE_BYTES:
+                raise HTTPException(status_code=413, detail="image exceeds 15 MB cap")
+            fname = f"artifact_{int(time.time() * 1000)}{ext}"
+            dst = ARTIFACT_DIR / fname
+            dst.write_bytes(raw)
+            image_path = str(dst).replace("\\", "/")
+
+        if not (url_clean or note_clean or image_path):
+            # Nothing to work with
+            return RedirectResponse(url="/artifact", status_code=303)
+
+        artifact_id = db.save_artifact(url=url_clean, image_path=image_path, note=note_clean)
+        background_tasks.add_task(
+            _run_artifact_generate,
+            artifact_id, url_clean, image_path, note_clean,
+        )
+        return RedirectResponse(url="/", status_code=303)
+
+    @app.get("/artifacts/{artifact_id}/image")
+    def serve_artifact_image(artifact_id: int):
+        """Serve an uploaded artifact image for the recent-artifacts list on /artifact."""
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT image_path FROM artifacts WHERE id = ?",
+                (artifact_id,),
+            ).fetchone()
+        if not row or not row.get("image_path"):
+            raise HTTPException(status_code=404, detail="no image for artifact")
+        path = Path(row["image_path"])
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="image file missing")
+        return FileResponse(path)
 
     @app.get("/compose", response_class=HTMLResponse)
     def compose_page(request: Request):
