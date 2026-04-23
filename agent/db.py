@@ -196,41 +196,55 @@ def insert_event(
 
 
 def unprocessed_events_by_repo() -> list[dict]:
-    """Return every unprocessed event, grouped by repo.
+    """Return every enabled repo, grouped with its unprocessed events.
 
-    Shape: [{repo: {id, name, type}, events: [...]}], newest repo first
-    (most recently touched). Events within each group are newest first.
+    Shape: [{repo: {id, name, type, last_checked_at, last_sha}, events: [...]}],
+    alphabetical by repo name. Repos with zero unprocessed events are still
+    included with events=[] so the UI can show them as "nothing pending"
+    rather than making them disappear.
     """
     with connect() as conn:
+        repos = conn.execute(
+            """
+            SELECT id, name, type, last_checked_at, last_sha
+            FROM repos
+            WHERE enabled = 1
+            ORDER BY name
+            """
+        ).fetchall()
         rows = conn.execute(
             """
             SELECT e.*, r.name AS repo_name, r.type AS repo_type
             FROM repo_events e
             JOIN repos r ON r.id = e.repo_id
-            WHERE e.processed = 0
-            ORDER BY r.name, e.event_timestamp DESC
+            WHERE e.processed = 0 AND r.enabled = 1
+            ORDER BY e.event_timestamp DESC
             """
         ).fetchall()
+
     for r in rows:
         try:
             r["files_changed"] = json.loads(r.get("files_changed") or "[]")
         except Exception:
             r["files_changed"] = []
 
-    groups: dict[int, dict] = {}
+    by_repo: dict[int, list] = {repo["id"]: [] for repo in repos}
     for row in rows:
-        rid = row["repo_id"]
-        if rid not in groups:
-            groups[rid] = {
-                "repo": {
-                    "id": rid,
-                    "name": row["repo_name"],
-                    "type": row["repo_type"],
-                },
-                "events": [],
-            }
-        groups[rid]["events"].append(row)
-    return list(groups.values())
+        by_repo[row["repo_id"]].append(row)
+
+    return [
+        {
+            "repo": {
+                "id": r["id"],
+                "name": r["name"],
+                "type": r["type"],
+                "last_checked_at": r["last_checked_at"],
+                "last_sha": r["last_sha"],
+            },
+            "events": by_repo[r["id"]],
+        }
+        for r in repos
+    ]
 
 
 def events_by_ids(event_ids: Iterable[int]) -> list[dict]:
