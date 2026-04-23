@@ -9,10 +9,43 @@
       <button type="submit" class="btn ghost">Poll Now</button>
     </form>
     <form method="post" action="/actions/generate_now" class="inline">
-      <button type="submit" class="btn">Generate Now</button>
+      <button type="submit" class="btn" {% if job.running %}disabled{% endif %}>Generate Now</button>
     </form>
   </div>
 </section>
+
+{% if job.running %}
+<section id="job-banner" class="job-banner" data-kind="{{ job.kind }}">
+  <span class="dot"></span>
+  <span class="job-text">
+    Background job running —
+    {% if job.kind == 'generating' %}drafting posts + images{% if job.detail %} ({{ job.detail }}){% endif %}
+    {% elif job.kind == 'regen_image' %}regenerating image for {{ job.detail }}
+    {% else %}{{ job.kind }}{% endif %}.
+    Typical 2-3 minutes for 3 variants with images.
+  </span>
+  <span class="job-elapsed mono">{{ job.elapsed_s or 0 }}s</span>
+</section>
+<script>
+(function () {
+  const banner = document.getElementById("job-banner");
+  const elapsed = banner.querySelector(".job-elapsed");
+  async function tick() {
+    try {
+      const r = await fetch("/api/job_status", { cache: "no-store" });
+      const j = await r.json();
+      if (!j.running) {
+        location.reload();
+        return;
+      }
+      elapsed.textContent = (j.elapsed_s || 0) + "s";
+    } catch (e) { /* ignore transient */ }
+    setTimeout(tick, 4000);
+  }
+  setTimeout(tick, 4000);
+})();
+</script>
+{% endif %}
 
 {% if not groups %}
   <p class="empty">Nothing pending. Click <em>Generate Now</em> to draft a set.</p>

@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -41,10 +43,64 @@ def create_app(cfg: Config) -> FastAPI:
     app = FastAPI(title="linkedin-agent", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 
+    # Single-user localhost app. One generation at a time is fine; enforce it
+    # so parallel clicks don't hammer the xAI API and DB writes don't race.
+    _gen_lock = threading.Lock()
+    _job_state: dict = {"running": False, "kind": None, "started_at": None, "detail": None}
+
+    def _set_job(kind: Optional[str], detail: Optional[str] = None) -> None:
+        _job_state["running"] = kind is not None
+        _job_state["kind"] = kind
+        _job_state["detail"] = detail
+        _job_state["started_at"] = time.time() if kind else None
+
+    def _run_generate(events: Optional[list], detail: str) -> None:
+        """Background wrapper around generate_variants_job with locking + job tracking."""
+        from agent.scheduler import generate_variants_job
+        if not _gen_lock.acquire(blocking=False):
+            log.info("generation already running; ignoring concurrent trigger")
+            return
+        try:
+            _set_job("generating", detail)
+            generate_variants_job(cfg, events=events)
+        except Exception:
+            log.exception("background generate failed")
+        finally:
+            _set_job(None)
+            _gen_lock.release()
+
+    def _run_regen_image(post_id: int) -> None:
+        from agent.generator import grok_images
+        if not _gen_lock.acquire(blocking=False):
+            log.info("generation already running; ignoring regen image request")
+            return
+        try:
+            _set_job("regen_image", f"post {post_id}")
+            post = db.get_post(post_id)
+            if not post:
+                return
+            content = post.get("edited_content") or post.get("content") or ""
+            path = grok_images.generate_image_for_post(
+                cfg=cfg,
+                post_id=post_id,
+                hook=post.get("hook") or "",
+                content=content,
+            )
+            if path:
+                db.set_post_image_path(post_id, path)
+        except Exception:
+            log.exception("background regen_image failed for post %d", post_id)
+        finally:
+            _set_job(None)
+            _gen_lock.release()
+
     @app.get("/", response_class=HTMLResponse)
     def queue_page(request: Request):
         groups = db.pending_groups()
         linkedin_connected = db.get_linkedin_auth() is not None
+        job = dict(_job_state)
+        if job.get("started_at"):
+            job["elapsed_s"] = int(time.time() - job["started_at"])
         return TEMPLATES.TemplateResponse(
             "queue.html",
             {
@@ -52,9 +108,18 @@ def create_app(cfg: Config) -> FastAPI:
                 "groups": groups,
                 "angle_labels": ANGLE_LABELS,
                 "linkedin_connected": linkedin_connected,
+                "job": job,
                 "active": "queue",
             },
         )
+
+    @app.get("/api/job_status")
+    def job_status():
+        """Polled from the queue banner's JS to auto-refresh when done."""
+        snap = dict(_job_state)
+        if snap.get("started_at"):
+            snap["elapsed_s"] = int(time.time() - snap["started_at"])
+        return snap
 
     @app.post("/posts/{post_id}/mark_posted")
     def mark_posted(post_id: int, edited_content: str = Form("")):
@@ -114,24 +179,16 @@ def create_app(cfg: Config) -> FastAPI:
         return FileResponse(path, media_type="image/png")
 
     @app.post("/posts/{post_id}/regenerate_image")
-    def regenerate_image(post_id: int):
-        from agent.generator import grok_images
+    def regenerate_image(post_id: int, background_tasks: BackgroundTasks):
         post = db.get_post(post_id)
         if not post:
             raise HTTPException(status_code=404, detail="post not found")
-        content = post.get("edited_content") or post.get("content") or ""
-        path = grok_images.generate_image_for_post(
-            cfg=cfg,
-            post_id=post_id,
-            hook=post.get("hook") or "",
-            content=content,
-        )
-        if path:
-            db.set_post_image_path(post_id, path)
+        background_tasks.add_task(_run_regen_image, post_id)
         return RedirectResponse(url="/", status_code=303)
 
     @app.post("/actions/poll_now")
     def poll_now():
+        # Poll is fast (~5s), leave synchronous.
         from agent.scheduler import poll_repos_job
         try:
             poll_repos_job(cfg)
@@ -140,12 +197,10 @@ def create_app(cfg: Config) -> FastAPI:
         return RedirectResponse(url="/", status_code=303)
 
     @app.post("/actions/generate_now")
-    def generate_now():
-        from agent.scheduler import generate_variants_job
-        try:
-            generate_variants_job(cfg)
-        except Exception:
-            log.exception("generate_now failed")
+    def generate_now(background_tasks: BackgroundTasks):
+        # Runs in background so the browser isn't blocked for 2-3 minutes
+        # while Grok drafts 3 posts + 3 images.
+        background_tasks.add_task(_run_generate, None, "all unprocessed")
         return RedirectResponse(url="/", status_code=303)
 
     @app.get("/events", response_class=HTMLResponse)
@@ -163,10 +218,10 @@ def create_app(cfg: Config) -> FastAPI:
         )
 
     @app.post("/actions/generate_from_selected")
-    async def generate_from_selected(request: Request):
-        """Generate 3 variants from only the explicitly selected events."""
-        from agent.scheduler import generate_variants_job
-        from agent.db import events_by_ids, mark_events_processed
+    async def generate_from_selected(request: Request, background_tasks: BackgroundTasks):
+        """Generate 3 variants from only the explicitly selected events.
+        Runs in background — the response redirects immediately to /."""
+        from agent.db import events_by_ids
 
         form = await request.form()
         raw_ids = form.getlist("event_ids")
@@ -182,13 +237,9 @@ def create_app(cfg: Config) -> FastAPI:
         events = events_by_ids(ids)
         if not events:
             return RedirectResponse(url="/events", status_code=303)
-        try:
-            generate_variants_job(cfg, events=events)
-        except Exception:
-            log.exception("generate_from_selected failed")
-        # generate_variants_job marks these processed on success; if the
-        # generator returned zero variants we still want them out of the queue
-        # only if generation actually ran — let the job decide. No fallback.
+
+        detail = f"{len(events)} selected event(s)"
+        background_tasks.add_task(_run_generate, events, detail)
         return RedirectResponse(url="/", status_code=303)
 
     @app.post("/actions/skip_events")
