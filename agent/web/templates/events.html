@@ -80,12 +80,15 @@
         </ul>
       {% else %}
         <div class="repo-empty-state">
-          {% if g.repo.last_checked_at %}
+          {% if not g.repo.last_checked_at %}
+            Not polled yet. Click <b>Poll Now</b> on the queue page to ingest commits
+            from this repo for the first time.
+          {% elif not g.repo.last_sha %}
+            Polled, but no commits found in the last 365 days. If this is wrong,
+            check the branch in <a href="/repos">/repos</a> or verify the GitHub token can read it.
+          {% else %}
             All commits in the last 365 days have already been used in a generation.
             Push new commits or click <b>Poll Now</b> after pushing to pull them in.
-          {% else %}
-            No commits found for this repo in the last 365 days. If this is wrong,
-            check the branch in <a href="/repos">/repos</a> or verify the GitHub token can read it.
           {% endif %}
           {% if g.repo.last_checked_at %}
             <span class="mono small">
