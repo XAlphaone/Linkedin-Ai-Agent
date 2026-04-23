@@ -18,6 +18,9 @@ log = logging.getLogger(__name__)
 # git activity so the /events page has a consistent horizon.
 ARTICLE_WINDOW_DAYS = 365
 MAX_ITEMS_PER_POLL = 50
+# Some feeds (notably reddit.com/r/*.rss) block requests without a clear
+# User-Agent. Identify ourselves.
+USER_AGENT = "linkedin-agent/0.1 (+https://github.com/XAlphaone/Linkedin-Ai-Agent)"
 
 
 def _parse_published(entry) -> Optional[str]:
@@ -51,7 +54,7 @@ def fetch_items(repo: dict, _unused_token: str = "") -> tuple[int, Optional[str]
         return 0, None
 
     try:
-        parsed = feedparser.parse(url)
+        parsed = feedparser.parse(url, agent=USER_AGENT)
     except Exception as e:
         log.warning("feed parse failed for %s: %s", url, e)
         return 0, None
