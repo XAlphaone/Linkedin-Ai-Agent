@@ -148,6 +148,65 @@ def create_app(cfg: Config) -> FastAPI:
             log.exception("generate_now failed")
         return RedirectResponse(url="/", status_code=303)
 
+    @app.get("/events", response_class=HTMLResponse)
+    def events_page(request: Request):
+        groups = db.unprocessed_events_by_repo()
+        total = sum(len(g["events"]) for g in groups)
+        return TEMPLATES.TemplateResponse(
+            "events.html",
+            {
+                "request": request,
+                "groups": groups,
+                "total": total,
+                "active": "events",
+            },
+        )
+
+    @app.post("/actions/generate_from_selected")
+    async def generate_from_selected(request: Request):
+        """Generate 3 variants from only the explicitly selected events."""
+        from agent.scheduler import generate_variants_job
+        from agent.db import events_by_ids, mark_events_processed
+
+        form = await request.form()
+        raw_ids = form.getlist("event_ids")
+        ids: list[int] = []
+        for v in raw_ids:
+            try:
+                ids.append(int(v))
+            except (TypeError, ValueError):
+                continue
+        if not ids:
+            return RedirectResponse(url="/events", status_code=303)
+
+        events = events_by_ids(ids)
+        if not events:
+            return RedirectResponse(url="/events", status_code=303)
+        try:
+            generate_variants_job(cfg, events=events)
+        except Exception:
+            log.exception("generate_from_selected failed")
+        # generate_variants_job marks these processed on success; if the
+        # generator returned zero variants we still want them out of the queue
+        # only if generation actually ran — let the job decide. No fallback.
+        return RedirectResponse(url="/", status_code=303)
+
+    @app.post("/actions/skip_events")
+    async def skip_events(request: Request):
+        """Mark selected events as processed without generating — for events
+        you'd rather not post about."""
+        form = await request.form()
+        raw_ids = form.getlist("event_ids")
+        ids: list[int] = []
+        for v in raw_ids:
+            try:
+                ids.append(int(v))
+            except (TypeError, ValueError):
+                continue
+        if ids:
+            db.mark_events_processed(ids)
+        return RedirectResponse(url="/events", status_code=303)
+
     @app.get("/history", response_class=HTMLResponse)
     def history_page(request: Request):
         rows = db.recent_history(limit=100)

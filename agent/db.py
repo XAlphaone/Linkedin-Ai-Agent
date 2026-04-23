@@ -195,6 +195,69 @@ def insert_event(
             return None
 
 
+def unprocessed_events_by_repo() -> list[dict]:
+    """Return every unprocessed event, grouped by repo.
+
+    Shape: [{repo: {id, name, type}, events: [...]}], newest repo first
+    (most recently touched). Events within each group are newest first.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT e.*, r.name AS repo_name, r.type AS repo_type
+            FROM repo_events e
+            JOIN repos r ON r.id = e.repo_id
+            WHERE e.processed = 0
+            ORDER BY r.name, e.event_timestamp DESC
+            """
+        ).fetchall()
+    for r in rows:
+        try:
+            r["files_changed"] = json.loads(r.get("files_changed") or "[]")
+        except Exception:
+            r["files_changed"] = []
+
+    groups: dict[int, dict] = {}
+    for row in rows:
+        rid = row["repo_id"]
+        if rid not in groups:
+            groups[rid] = {
+                "repo": {
+                    "id": rid,
+                    "name": row["repo_name"],
+                    "type": row["repo_type"],
+                },
+                "events": [],
+            }
+        groups[rid]["events"].append(row)
+    return list(groups.values())
+
+
+def events_by_ids(event_ids: Iterable[int]) -> list[dict]:
+    """Fetch specific events by id, filtered to only unprocessed ones."""
+    ids = [int(i) for i in event_ids]
+    if not ids:
+        return []
+    with connect() as conn:
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"""
+            SELECT e.*, r.name AS repo_name
+            FROM repo_events e
+            JOIN repos r ON r.id = e.repo_id
+            WHERE e.id IN ({placeholders}) AND e.processed = 0
+            ORDER BY e.event_timestamp DESC
+            """,
+            ids,
+        ).fetchall()
+    for r in rows:
+        try:
+            r["files_changed"] = json.loads(r.get("files_changed") or "[]")
+        except Exception:
+            r["files_changed"] = []
+    return list(rows)
+
+
 def unprocessed_events(limit: int = 20) -> list[dict]:
     with connect() as conn:
         rows = conn.execute(
@@ -214,6 +277,38 @@ def unprocessed_events(limit: int = 20) -> list[dict]:
             except Exception:
                 r["files_changed"] = []
         return list(rows)
+
+
+def balanced_unprocessed_events(per_repo: int = 4) -> list[dict]:
+    """Return up to `per_repo` newest unprocessed events **per repo**, so one
+    chatty repo can't starve the rest. Result is globally sorted newest first.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            WITH ranked AS (
+                SELECT e.*, r.name AS repo_name,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY e.repo_id
+                           ORDER BY e.event_timestamp DESC
+                       ) AS rn
+                FROM repo_events e
+                JOIN repos r ON r.id = e.repo_id
+                WHERE e.processed = 0
+            )
+            SELECT * FROM ranked
+            WHERE rn <= ?
+            ORDER BY event_timestamp DESC
+            """,
+            (per_repo,),
+        ).fetchall()
+    for r in rows:
+        try:
+            r["files_changed"] = json.loads(r.get("files_changed") or "[]")
+        except Exception:
+            r["files_changed"] = []
+        r.pop("rn", None)
+    return list(rows)
 
 
 def mark_events_processed(event_ids: Iterable[int]) -> None:

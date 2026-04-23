@@ -12,11 +12,16 @@ from agent.config import Config
 from agent.db import (
     list_repos,
     update_repo_checkpoint,
-    unprocessed_events,
+    balanced_unprocessed_events,
     mark_events_processed,
     new_variant_group,
     insert_post,
 )
+
+# How many newest unprocessed events to pull from each repo when Generate Now
+# runs without an explicit selection. Ensures every active repo contributes
+# to each batch rather than one chatty repo starving the rest.
+EVENTS_PER_REPO_DEFAULT = 4
 
 log = logging.getLogger(__name__)
 
@@ -45,14 +50,24 @@ def poll_repos_job(cfg: Config) -> int:
     return total
 
 
-def generate_variants_job(cfg: Config) -> int:
-    """Pull up to 20 unprocessed events, generate 3 variants, insert posts,
-    then generate one image per variant (best-effort)."""
+def generate_variants_job(cfg: Config, events: list[dict] | None = None) -> int:
+    """Generate 3 variants + images.
+
+    If `events` is None (cron or 'Generate Now' default), pull up to 20
+    unprocessed events. If a list is passed in (from the /events UI), use it
+    verbatim — caller is responsible for filtering to unprocessed.
+    """
     from agent.generator import grok as gen_client
     from agent.generator import grok_images
     from agent.db import set_post_image_path
 
-    events = unprocessed_events(limit=20)
+    if events is None:
+        events = balanced_unprocessed_events(per_repo=EVENTS_PER_REPO_DEFAULT)
+        log.info(
+            "generate_variants: balanced draw — %d events across %d repos",
+            len(events),
+            len({e["repo_id"] for e in events}),
+        )
     variants = gen_client.generate_variants(cfg, events)
     if not variants:
         log.info("generate_variants: nothing produced")

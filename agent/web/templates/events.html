@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Events — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>Events</h1>
+  <div class="sub">
+    {% if total %}
+      {{ total }} unprocessed · pick the ones worth a post
+    {% else %}
+      no unprocessed events · click Poll Now on the queue to ingest more
+    {% endif %}
+  </div>
+</section>
+
+{% if groups %}
+<form method="post" id="events-form" action="/actions/generate_from_selected" class="events-form">
+
+  <div class="events-toolbar">
+    <label class="checkbox">
+      <input type="checkbox" id="select-all">
+      <span>Select all</span>
+    </label>
+    <span class="selected-count"><span id="selected-count">0</span> selected</span>
+    <div class="spacer"></div>
+    <button type="submit" class="btn" id="btn-generate" disabled>Generate from selected</button>
+    <button
+      type="submit"
+      class="btn ghost"
+      formaction="/actions/skip_events"
+      id="btn-skip"
+      formnovalidate
+      disabled>
+      Skip selected
+    </button>
+  </div>
+
+  {% for g in groups %}
+    <section class="repo-group">
+      <header class="repo-group-head">
+        <div>
+          <span class="repo-name mono">{{ g.repo.name }}</span>
+          <span class="repo-type">{{ g.repo.type }}</span>
+        </div>
+        <span class="repo-count">{{ g.events | length }} event{{ '' if g.events|length == 1 else 's' }}</span>
+      </header>
+
+      <ul class="event-list">
+        {% for e in g.events %}
+          <li class="event">
+            <label class="event-label">
+              <input type="checkbox" name="event_ids" value="{{ e.id }}" class="event-check">
+              <div class="event-body">
+                <div class="event-head">
+                  <span class="event-type mono">{{ e.event_type }}</span>
+                  <span class="event-sha mono">{{ (e.sha or '')[:8] }}</span>
+                  <span class="event-time mono">{{ (e.event_timestamp or '')[:19].replace('T', ' ') }}</span>
+                </div>
+                <div class="event-title">{{ e.title or '(no title)' }}</div>
+                {% if e.body %}
+                  <div class="event-body-text">{{ e.body[:300] }}{% if e.body|length > 300 %}…{% endif %}</div>
+                {% endif %}
+                {% if e.files_changed %}
+                  <div class="event-files mono">
+                    {% for f in e.files_changed[:6] %}<span class="file">{{ f }}</span>{% endfor %}
+                    {% if e.files_changed|length > 6 %}<span class="file more">+{{ e.files_changed|length - 6 }} more</span>{% endif %}
+                  </div>
+                {% endif %}
+              </div>
+            </label>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+</form>
+
+<script>
+(function () {
+  const form = document.getElementById("events-form");
+  const selectAll = document.getElementById("select-all");
+  const checks = form.querySelectorAll(".event-check");
+  const countEl = document.getElementById("selected-count");
+  const btnGen = document.getElementById("btn-generate");
+  const btnSkip = document.getElementById("btn-skip");
+
+  function refresh() {
+    let n = 0;
+    checks.forEach(c => { if (c.checked) n++; });
+    countEl.textContent = n;
+    btnGen.disabled = n === 0;
+    btnSkip.disabled = n === 0;
+    selectAll.checked = n === checks.length && checks.length > 0;
+    selectAll.indeterminate = n > 0 && n < checks.length;
+  }
+  selectAll.addEventListener("change", () => {
+    checks.forEach(c => { c.checked = selectAll.checked; });
+    refresh();
+  });
+  checks.forEach(c => c.addEventListener("change", refresh));
+  refresh();
+})();
+</script>
+{% endif %}
+
+{% endblock %}

@@ -15,6 +15,11 @@ log = logging.getLogger(__name__)
 API = "https://api.github.com"
 GH_URL_RE = re.compile(r"github\.com[/:]([^/]+)/([^/]+?)(?:\.git)?/?$")
 
+# How far back to look on each poll. Wide window lets infrequently-updated
+# repos still contribute to posts. The UNIQUE(repo_id, sha, event_type)
+# constraint on repo_events means re-seeing the same commit is a no-op.
+COMMIT_WINDOW_DAYS = 365
+
 
 def _parse_owner_repo(url: str) -> Optional[tuple[str, str]]:
     m = GH_URL_RE.search(url.strip())
@@ -38,7 +43,7 @@ def fetch_events(repo: dict, github_token: str) -> tuple[int, Optional[str]]:
     owner, name = parsed
     branch = repo.get("branch") or "main"
     last_sha = repo.get("last_sha")
-    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    since = (datetime.now(timezone.utc) - timedelta(days=COMMIT_WINDOW_DAYS)).isoformat()
 
     inserted = 0
     newest_sha: Optional[str] = last_sha
@@ -47,7 +52,7 @@ def fetch_events(repo: dict, github_token: str) -> tuple[int, Optional[str]]:
     try:
         r = requests.get(
             f"{API}/repos/{owner}/{name}/commits",
-            params={"sha": branch, "per_page": 50, "since": since},
+            params={"sha": branch, "per_page": 100, "since": since},
             headers=_headers(github_token),
             timeout=20,
         )
@@ -87,7 +92,7 @@ def fetch_events(repo: dict, github_token: str) -> tuple[int, Optional[str]]:
     try:
         r = requests.get(
             f"{API}/repos/{owner}/{name}/pulls",
-            params={"state": "closed", "per_page": 50, "sort": "updated", "direction": "desc"},
+            params={"state": "closed", "per_page": 100, "sort": "updated", "direction": "desc"},
             headers=_headers(github_token),
             timeout=20,
         )
@@ -97,7 +102,7 @@ def fetch_events(repo: dict, github_token: str) -> tuple[int, Optional[str]]:
         log.warning("github pulls fetch failed for %s/%s: %s", owner, name, e)
         pulls = []
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=COMMIT_WINDOW_DAYS)
     for p in pulls:
         merged_at = p.get("merged_at")
         if not merged_at:
