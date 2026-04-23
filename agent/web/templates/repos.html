@@ -48,10 +48,11 @@
       <select name="type">
         <option value="local">local</option>
         <option value="github">github</option>
+        <option value="rss">rss</option>
       </select>
     </label>
-    <label class="wide">Path or URL<input name="path_or_url" required></label>
-    <label>Branch<input name="branch" value="main"></label>
+    <label class="wide">Path / URL / feed URL<input name="path_or_url" required></label>
+    <label>Branch (unused for rss)<input name="branch" value="main"></label>
     <label class="toggle">
       <input type="checkbox" name="enabled" value="1" checked>
       <span>enabled</span>

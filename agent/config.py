@@ -19,7 +19,7 @@ class Author(BaseModel):
 
 class RepoConfig(BaseModel):
     name: str
-    type: Literal["local", "github"]
+    type: Literal["local", "github", "rss"]
     path: Optional[str] = None
     url: Optional[str] = None
     branch: str = "main"

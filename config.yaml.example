@@ -27,6 +27,17 @@ repos:
     branch: "main"
     enabled: true
 
+  # RSS / Atom feed — ingest articles as events. Branch is ignored for rss.
+  # Good starter feeds for an AI/software engineer:
+  #   https://www.anthropic.com/news/rss.xml
+  #   https://openai.com/blog/rss.xml
+  #   https://hnrss.org/frontpage   (Hacker News front page)
+  #   http://export.arxiv.org/rss/cs.AI   (arXiv cs.AI)
+  - name: "arxiv-cs.AI"
+    type: rss
+    url: "http://export.arxiv.org/rss/cs.AI"
+    enabled: true
+
 generation:
   model: "grok-4.20-0309-reasoning"            # any xAI text model
   variants_per_day: 3

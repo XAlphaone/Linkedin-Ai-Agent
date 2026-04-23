@@ -27,14 +27,20 @@ log = logging.getLogger(__name__)
 
 
 def poll_one_repo(cfg: Config, repo: dict) -> int:
-    """Poll a single repo. Inserts new events, updates checkpoint on success.
-    Returns count of new events inserted. Never raises."""
-    from agent.watchers import git_local, github_api
+    """Poll a single source (git repo or RSS feed). Inserts new events,
+    updates checkpoint on success. Returns count of new events. Never raises."""
+    from agent.watchers import git_local, github_api, rss
     try:
-        if repo["type"] == "local":
+        t = repo["type"]
+        if t == "local":
             inserted, last_sha = git_local.walk_commits(repo)
-        else:
+        elif t == "github":
             inserted, last_sha = github_api.fetch_events(repo, cfg.github_token)
+        elif t == "rss":
+            inserted, last_sha = rss.fetch_items(repo)
+        else:
+            log.warning("unknown repo type %s for %s", t, repo["name"])
+            return 0
         if last_sha:
             update_repo_checkpoint(
                 repo["id"],
