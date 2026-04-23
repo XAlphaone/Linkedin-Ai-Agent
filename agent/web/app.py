@@ -311,24 +311,40 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.post("/repos")
     def repos_upsert(
+        background_tasks: BackgroundTasks,
         name: str = Form(...),
         type: str = Form(...),
         path_or_url: str = Form(...),
         branch: str = Form("main"),
         enabled: Optional[str] = Form(None),
     ):
-        db.upsert_repo(
+        row = db.upsert_repo(
             name=name.strip(),
             type_=type.strip(),
             path_or_url=path_or_url.strip(),
             branch=branch.strip() or "main",
             enabled=bool(enabled),
         )
+        if row and row.get("enabled"):
+            from agent.scheduler import poll_one_repo
+            background_tasks.add_task(poll_one_repo, cfg, row)
         return RedirectResponse(url="/repos", status_code=303)
 
     @app.post("/repos/{repo_id}/toggle")
-    def repos_toggle(repo_id: int, enabled: Optional[str] = Form(None)):
-        db.set_repo_enabled(repo_id, bool(enabled))
+    def repos_toggle(
+        repo_id: int,
+        background_tasks: BackgroundTasks,
+        enabled: Optional[str] = Form(None),
+    ):
+        new_enabled = bool(enabled)
+        db.set_repo_enabled(repo_id, new_enabled)
+        # Only poll on the enable transition — disabling is a no-op for data.
+        if new_enabled:
+            with db.connect() as conn:
+                row = conn.execute("SELECT * FROM repos WHERE id = ?", (repo_id,)).fetchone()
+            if row:
+                from agent.scheduler import poll_one_repo
+                background_tasks.add_task(poll_one_repo, cfg, row)
         return RedirectResponse(url="/repos", status_code=303)
 
     @app.get("/auth/linkedin/start")

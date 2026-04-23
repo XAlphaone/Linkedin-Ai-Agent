@@ -26,26 +26,33 @@ EVENTS_PER_REPO_DEFAULT = 4
 log = logging.getLogger(__name__)
 
 
-def poll_repos_job(cfg: Config) -> int:
-    """Walk each enabled repo, insert new events. Returns count of inserted events."""
+def poll_one_repo(cfg: Config, repo: dict) -> int:
+    """Poll a single repo. Inserts new events, updates checkpoint on success.
+    Returns count of new events inserted. Never raises."""
     from agent.watchers import git_local, github_api
+    try:
+        if repo["type"] == "local":
+            inserted, last_sha = git_local.walk_commits(repo)
+        else:
+            inserted, last_sha = github_api.fetch_events(repo, cfg.github_token)
+        if last_sha:
+            update_repo_checkpoint(
+                repo["id"],
+                last_sha,
+                datetime.now(timezone.utc).isoformat(),
+            )
+        log.info("polled %s: +%d events", repo["name"], inserted)
+        return inserted
+    except Exception:
+        log.exception("polling repo %s failed", repo["name"])
+        return 0
 
+
+def poll_repos_job(cfg: Config) -> int:
+    """Walk every enabled repo. Returns total count of new events inserted."""
     total = 0
     for repo in list_repos(enabled_only=True):
-        try:
-            if repo["type"] == "local":
-                inserted, last_sha = git_local.walk_commits(repo)
-            else:
-                inserted, last_sha = github_api.fetch_events(repo, cfg.github_token)
-            total += inserted
-            if last_sha:
-                update_repo_checkpoint(
-                    repo["id"],
-                    last_sha,
-                    datetime.now(timezone.utc).isoformat(),
-                )
-        except Exception:
-            log.exception("polling repo %s failed", repo["name"])
+        total += poll_one_repo(cfg, repo)
     log.info("poll_repos: inserted %d events", total)
     return total
 
