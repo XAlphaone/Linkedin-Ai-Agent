@@ -35,6 +35,41 @@ def _headers(token: str) -> dict[str, str]:
     return h
 
 
+def _paginated_get(
+    url: str,
+    params: dict,
+    headers: dict,
+    max_pages: int,
+    timeout: int = 20,
+) -> list:
+    """Follow GitHub's rel=\"next\" Link header until exhausted or max_pages.
+
+    Each response's Link header contains a fully-qualified next URL with
+    params already baked in. We just follow it; params only get passed on
+    the first request.
+    """
+    results: list = []
+    page_url: Optional[str] = url
+    page_params: Optional[dict] = dict(params)
+    for page_idx in range(max_pages):
+        if not page_url:
+            break
+        r = requests.get(page_url, params=page_params, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        batch = r.json()
+        if not isinstance(batch, list) or not batch:
+            break
+        results.extend(batch)
+        nxt = r.links.get("next")
+        if not nxt:
+            break
+        page_url = nxt["url"]
+        page_params = None
+    else:
+        log.warning("paginated_get hit max_pages=%d on %s", max_pages, url)
+    return results
+
+
 def fetch_events(repo: dict, github_token: str) -> tuple[int, Optional[str]]:
     parsed = _parse_owner_repo(repo["path_or_url"])
     if not parsed:
@@ -49,15 +84,16 @@ def fetch_events(repo: dict, github_token: str) -> tuple[int, Optional[str]]:
     newest_sha: Optional[str] = last_sha
 
     # ---- commits on branch ----
+    # max_pages=50 at per_page=100 caps at 5,000 commits per poll per repo.
+    # That covers 99% of real repos over a 365d window; anything bigger can
+    # bump the cap.
     try:
-        r = requests.get(
-            f"{API}/repos/{owner}/{name}/commits",
+        commits = _paginated_get(
+            url=f"{API}/repos/{owner}/{name}/commits",
             params={"sha": branch, "per_page": 100, "since": since},
             headers=_headers(github_token),
-            timeout=20,
+            max_pages=50,
         )
-        r.raise_for_status()
-        commits = r.json()
     except Exception as e:
         log.warning("github commits fetch failed for %s/%s: %s", owner, name, e)
         commits = []
@@ -88,16 +124,17 @@ def fetch_events(repo: dict, github_token: str) -> tuple[int, Optional[str]]:
         if row_id is not None:
             inserted += 1
 
-    # ---- merged PRs (last 7 days) ----
+    # ---- merged PRs (within commit window) ----
+    # GitHub's /pulls endpoint sorts by updated, not merged_at, so we can't
+    # short-circuit when we see an old PR — we have to scan. Cap at 10 pages
+    # (1,000 closed PRs) which is plenty for any reasonable repo.
     try:
-        r = requests.get(
-            f"{API}/repos/{owner}/{name}/pulls",
+        pulls = _paginated_get(
+            url=f"{API}/repos/{owner}/{name}/pulls",
             params={"state": "closed", "per_page": 100, "sort": "updated", "direction": "desc"},
             headers=_headers(github_token),
-            timeout=20,
+            max_pages=10,
         )
-        r.raise_for_status()
-        pulls = r.json()
     except Exception as e:
         log.warning("github pulls fetch failed for %s/%s: %s", owner, name, e)
         pulls = []
