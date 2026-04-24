@@ -15,7 +15,7 @@
       name="topic"
       rows="10"
       placeholder="Type anything here. A rough observation, a reaction to a paper you read, a decision you just made, a pattern you've noticed. Grok will take it from here, in your voice, across the three angles (technical_peer / decision_maker / mixed_story). Longer and more specific is almost always better."
-      required></textarea>
+      required>{{ prefill or '' }}</textarea>
     <div class="compose-actions">
       {% include "_target_select.html" %}
       <span class="hint">Target picks the voice · "Personal" uses first-person singular</span>

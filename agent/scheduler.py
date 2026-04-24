@@ -123,6 +123,16 @@ def generate_variants_job(
     return len(variants)
 
 
+def reddit_scan_job(cfg: Config) -> dict:
+    """Scheduled reddit scan. Summary is logged; errors are non-fatal."""
+    from agent.scanners import reddit as reddit_scanner
+    try:
+        return reddit_scanner.run_scan(cfg)
+    except Exception:
+        log.exception("reddit_scan_job crashed")
+        return {"errors": ["exception"]}
+
+
 def start_scheduler(cfg: Config) -> BackgroundScheduler:
     sched = BackgroundScheduler(timezone="UTC")
     sched.add_job(
@@ -139,10 +149,19 @@ def start_scheduler(cfg: Config) -> BackgroundScheduler:
         id="generate_variants",
         replace_existing=True,
     )
+    if cfg.reddit_scan.enabled:
+        sched.add_job(
+            reddit_scan_job,
+            trigger=IntervalTrigger(hours=cfg.reddit_scan.scan_interval_hours),
+            args=[cfg],
+            id="reddit_scan",
+            replace_existing=True,
+        )
     sched.start()
     log.info(
-        "scheduler started: poll every %dh; generate cron=%r",
+        "scheduler started: poll every %dh; generate cron=%r; reddit_scan=%s",
         cfg.generation.poll_interval_hours,
         cfg.generation.daily_generate_cron,
+        f"every {cfg.reddit_scan.scan_interval_hours}h" if cfg.reddit_scan.enabled else "off",
     )
     return sched

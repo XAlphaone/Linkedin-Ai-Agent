@@ -440,13 +440,31 @@ def create_app(cfg: Config) -> FastAPI:
         return FileResponse(path)
 
     @app.get("/compose", response_class=HTMLResponse)
-    def compose_page(request: Request):
+    def compose_page(request: Request, from_opportunity: Optional[int] = None):
         recent = db.recent_compose_topics(limit=10)
+        prefill = ""
+        if from_opportunity:
+            opp = db.get_reddit_opportunity(from_opportunity)
+            if opp:
+                parts = [
+                    f"Reddit post in r/{opp['subreddit']} (score {opp['score']}):",
+                    f"Title: {opp['title']}",
+                ]
+                if opp.get("body"):
+                    parts.append(f"Body: {opp['body'][:1500]}")
+                parts.append(f"Link: {opp['permalink']}")
+                parts.append("")
+                parts.append(
+                    "My take (write here): this surfaces a problem worth building for, "
+                    "or an idea I'd like to riff on. Replace this with your angle."
+                )
+                prefill = "\n\n".join(parts)
         return TEMPLATES.TemplateResponse(
             "compose.html",
             {
                 "request": request,
                 "recent": recent,
+                "prefill": prefill,
                 "brand_voices": cfg.brand_voices,
                 "active": "compose",
             },
@@ -482,6 +500,53 @@ def create_app(cfg: Config) -> FastAPI:
             target,
         )
         return RedirectResponse(url="/", status_code=303)
+
+    @app.get("/ideas", response_class=HTMLResponse)
+    def ideas_page(request: Request, include_dismissed: int = 0):
+        include_d = bool(include_dismissed)
+        opps = db.list_reddit_opportunities(limit=200, include_dismissed=include_d)
+        counts = db.reddit_opportunity_counts()
+        configured = bool(
+            cfg.reddit_client_id and cfg.reddit_client_secret and cfg.reddit_user_agent
+        )
+        return TEMPLATES.TemplateResponse(
+            "ideas.html",
+            {
+                "request": request,
+                "opportunities": opps,
+                "counts": counts,
+                "configured": configured,
+                "include_dismissed": include_d,
+                "active": "ideas",
+            },
+        )
+
+    def _run_reddit_scan() -> None:
+        from agent.scanners import reddit as reddit_scanner
+        try:
+            reddit_scanner.run_scan(cfg)
+        except Exception:
+            log.exception("manual reddit scan failed")
+
+    @app.post("/actions/reddit_scan")
+    def reddit_scan_now(background_tasks: BackgroundTasks):
+        if not (cfg.reddit_client_id and cfg.reddit_client_secret and cfg.reddit_user_agent):
+            raise HTTPException(
+                status_code=400,
+                detail="REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT not set in .env",
+            )
+        background_tasks.add_task(_run_reddit_scan)
+        return RedirectResponse(url="/ideas", status_code=303)
+
+    @app.post("/ideas/{opp_id}/dismiss")
+    def ideas_dismiss(opp_id: int):
+        db.dismiss_reddit_opportunity(opp_id)
+        return RedirectResponse(url="/ideas", status_code=303)
+
+    @app.post("/ideas/{opp_id}/undismiss")
+    def ideas_undismiss(opp_id: int):
+        db.undismiss_reddit_opportunity(opp_id)
+        return RedirectResponse(url="/ideas?include_dismissed=1", status_code=303)
 
     @app.get("/events", response_class=HTMLResponse)
     def events_page(request: Request):

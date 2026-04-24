@@ -79,6 +79,26 @@ CREATE TABLE IF NOT EXISTS artifacts (
     image_description TEXT
 );
 
+-- Opportunities mined from reddit (pain points, "I wish there was an app..." posts).
+CREATE TABLE IF NOT EXISTS reddit_opportunities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    permalink TEXT NOT NULL UNIQUE,
+    subreddit TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    author TEXT,
+    score INTEGER DEFAULT 0,
+    num_comments INTEGER DEFAULT 0,
+    reddit_id TEXT,
+    url TEXT,
+    posted_at TEXT,
+    matched_by TEXT,
+    fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    dismissed INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_reddit_opp_dismissed ON reddit_opportunities(dismissed, score DESC);
+
 CREATE TABLE IF NOT EXISTS linkedin_auth (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     member_urn TEXT NOT NULL,
@@ -483,6 +503,90 @@ def recent_artifacts(limit: int = 10) -> list[dict]:
             "SELECT * FROM artifacts ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall())
+
+
+# -------------------- reddit opportunities --------------------
+
+def insert_reddit_opportunity(
+    permalink: str,
+    subreddit: str,
+    title: str,
+    body: Optional[str],
+    author: Optional[str],
+    score: int,
+    num_comments: int,
+    reddit_id: Optional[str],
+    url: Optional[str],
+    posted_at: Optional[str],
+    matched_by: str,
+) -> Optional[int]:
+    """Insert a Reddit opportunity; returns the row id, or None if a row with
+    the same permalink already exists (silent de-dup)."""
+    import sqlite3 as _sqlite3
+    with connect() as conn:
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO reddit_opportunities
+                    (permalink, subreddit, title, body, author, score,
+                     num_comments, reddit_id, url, posted_at, matched_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (permalink, subreddit, title, body, author, score,
+                 num_comments, reddit_id, url, posted_at, matched_by),
+            )
+            return cur.lastrowid
+        except _sqlite3.IntegrityError:
+            return None
+
+
+def list_reddit_opportunities(limit: int = 100, include_dismissed: bool = False) -> list[dict]:
+    with connect() as conn:
+        if include_dismissed:
+            sql = "SELECT * FROM reddit_opportunities ORDER BY score DESC, id DESC LIMIT ?"
+        else:
+            sql = ("SELECT * FROM reddit_opportunities WHERE dismissed = 0 "
+                   "ORDER BY score DESC, id DESC LIMIT ?")
+        return list(conn.execute(sql, (limit,)).fetchall())
+
+
+def get_reddit_opportunity(opp_id: int) -> Optional[dict]:
+    with connect() as conn:
+        return conn.execute(
+            "SELECT * FROM reddit_opportunities WHERE id = ?", (opp_id,)
+        ).fetchone()
+
+
+def dismiss_reddit_opportunity(opp_id: int) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE reddit_opportunities SET dismissed = 1 WHERE id = ?", (opp_id,)
+        )
+
+
+def undismiss_reddit_opportunity(opp_id: int) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE reddit_opportunities SET dismissed = 0 WHERE id = ?", (opp_id,)
+        )
+
+
+def reddit_opportunity_counts() -> dict:
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT
+              SUM(CASE WHEN dismissed = 0 THEN 1 ELSE 0 END) AS active,
+              SUM(CASE WHEN dismissed = 1 THEN 1 ELSE 0 END) AS dismissed,
+              COUNT(*) AS total
+            FROM reddit_opportunities
+            """
+        ).fetchone()
+        return {
+            "active": row["active"] or 0,
+            "dismissed": row["dismissed"] or 0,
+            "total": row["total"] or 0,
+        }
 
 
 # -------------------- linkedin_auth (singleton row, id = 1) --------------------

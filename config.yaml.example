@@ -53,6 +53,24 @@ brand_voices:
   #     - "First person PLURAL. Speak as the team — we, not I."
   #     - "Real numbers and concrete user outcomes, never hype."
 
+reddit_scan:
+  enabled: true
+  scan_interval_hours: 6
+  per_source_limit: 25
+  subreddits:
+    - SaaS
+    - Entrepreneur
+    - sideproject
+    - indiehackers
+    - smallbusiness
+    - webdev
+  queries:
+    - "I wish there was an app that"
+    - "is there a tool that"
+    - "someone should build"
+    - "startup idea for"
+    - "looking for software that"
+
 generation:
   model: "grok-4.20-0309-reasoning"            # any xAI text model
   variants_per_day: 3

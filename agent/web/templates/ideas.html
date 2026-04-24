@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Ideas — linkedin agent{% endblock %}
+{% block content %}
+
+<section class="page-head">
+  <h1>Ideas</h1>
+  <div class="sub">
+    {% if counts.total %}
+      {{ counts.active }} active · {{ counts.dismissed }} dismissed · product pain points + "I wish there was an app" signals from reddit
+    {% else %}
+      no scans yet · click Scan Now below or wait for the scheduled run
+    {% endif %}
+  </div>
+</section>
+
+<section class="ideas-toolbar">
+  {% if configured %}
+    <form method="post" action="/actions/reddit_scan" class="inline">
+      <button type="submit" class="btn">Scan Now</button>
+    </form>
+  {% else %}
+    <p class="empty">
+      Reddit credentials not configured.
+      Set <code class="mono">REDDIT_CLIENT_ID</code>, <code class="mono">REDDIT_CLIENT_SECRET</code>,
+      and <code class="mono">REDDIT_USER_AGENT</code> in <code class="mono">.env</code>
+      (see <a href="https://www.reddit.com/prefs/apps" target="_blank">reddit apps</a>),
+      then restart.
+    </p>
+  {% endif %}
+  <div class="spacer"></div>
+  {% if include_dismissed %}
+    <a href="/ideas" class="btn ghost">Hide dismissed</a>
+  {% else %}
+    <a href="/ideas?include_dismissed=1" class="btn ghost">Show dismissed</a>
+  {% endif %}
+</section>
+
+{% if opportunities %}
+<div class="ideas-list">
+  {% for o in opportunities %}
+    <article class="idea {% if o.dismissed %}dismissed{% endif %}">
+      <header class="idea-head">
+        <span class="sub mono">r/{{ o.subreddit }}</span>
+        <span class="score" title="reddit score">↑ {{ o.score }}</span>
+        <span class="comments" title="comments">💬 {{ o.num_comments }}</span>
+        <span class="matched mono">{{ o.matched_by }}</span>
+        <span class="when mono">{{ (o.posted_at or o.fetched_at)[:10] }}</span>
+      </header>
+      <h3 class="idea-title">
+        <a href="{{ o.permalink }}" target="_blank" rel="noopener">{{ o.title }}</a>
+      </h3>
+      {% if o.body %}
+        <p class="idea-body">{{ o.body[:500] }}{% if o.body|length > 500 %}…{% endif %}</p>
+      {% endif %}
+      <footer class="idea-actions">
+        {% if not o.dismissed %}
+          <a class="btn" href="/compose?from_opportunity={{ o.id }}">Draft post</a>
+          <form method="post" action="/ideas/{{ o.id }}/dismiss" class="inline">
+            <button type="submit" class="btn ghost">Dismiss</button>
+          </form>
+        {% else %}
+          <form method="post" action="/ideas/{{ o.id }}/undismiss" class="inline">
+            <button type="submit" class="btn ghost">Restore</button>
+          </form>
+        {% endif %}
+        {% if o.author %}
+          <span class="author mono small">by u/{{ o.author }}</span>
+        {% endif %}
+      </footer>
+    </article>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
