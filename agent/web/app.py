@@ -506,9 +506,7 @@ def create_app(cfg: Config) -> FastAPI:
         include_d = bool(include_dismissed)
         opps = db.list_reddit_opportunities(limit=200, include_dismissed=include_d)
         counts = db.reddit_opportunity_counts()
-        configured = bool(
-            cfg.reddit_client_id and cfg.reddit_client_secret and cfg.reddit_user_agent
-        )
+        configured = bool(cfg.reddit_user_agent)
         return TEMPLATES.TemplateResponse(
             "ideas.html",
             {
@@ -530,10 +528,10 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.post("/actions/reddit_scan")
     def reddit_scan_now(background_tasks: BackgroundTasks):
-        if not (cfg.reddit_client_id and cfg.reddit_client_secret and cfg.reddit_user_agent):
+        if not cfg.reddit_user_agent:
             raise HTTPException(
                 status_code=400,
-                detail="REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT not set in .env",
+                detail="REDDIT_USER_AGENT not set in .env (required for public JSON; no OAuth app needed)",
             )
         background_tasks.add_task(_run_reddit_scan)
         return RedirectResponse(url="/ideas", status_code=303)

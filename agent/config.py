@@ -102,8 +102,9 @@ class Config(BaseModel):
 
     ingest_token: str = ""  # gates POST /ingest; if empty, endpoint is disabled
 
-    reddit_client_id: str = ""
-    reddit_client_secret: str = ""
+    # Reddit scanner uses public .json endpoints only — no OAuth needed since
+    # self-service app creation was removed in Nov 2025 (Responsible Builder
+    # Policy). Just a real User-Agent; Reddit 429s generic ones.
     reddit_user_agent: str = ""
 
 
@@ -129,7 +130,5 @@ def load_config(
     if env_org_redirect:
         data["linkedin_org_redirect_uri"] = env_org_redirect
     data["ingest_token"] = os.environ.get("INGEST_TOKEN", "")
-    data["reddit_client_id"] = os.environ.get("REDDIT_CLIENT_ID", "")
-    data["reddit_client_secret"] = os.environ.get("REDDIT_CLIENT_SECRET", "")
     data["reddit_user_agent"] = os.environ.get("REDDIT_USER_AGENT", "")
     return Config.model_validate(data)

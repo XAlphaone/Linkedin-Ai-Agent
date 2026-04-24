@@ -20,11 +20,11 @@
     </form>
   {% else %}
     <p class="empty">
-      Reddit credentials not configured.
-      Set <code class="mono">REDDIT_CLIENT_ID</code>, <code class="mono">REDDIT_CLIENT_SECRET</code>,
-      and <code class="mono">REDDIT_USER_AGENT</code> in <code class="mono">.env</code>
-      (see <a href="https://www.reddit.com/prefs/apps" target="_blank">reddit apps</a>),
-      then restart.
+      <code class="mono">REDDIT_USER_AGENT</code> is not set in <code class="mono">.env</code>.
+      No OAuth app is needed — Reddit killed self-service app creation in Nov 2025,
+      but public <code class="mono">.json</code> endpoints still work. Just add an
+      identifying UA (e.g. <code class="mono">linkedin-agent/0.1 by /u/yourname</code>)
+      and restart.
     </p>
   {% endif %}
   <div class="spacer"></div>
