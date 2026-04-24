@@ -17,6 +17,19 @@ class Author(BaseModel):
     avoid_topics: list[str] = Field(default_factory=list)
 
 
+class BrandVoice(BaseModel):
+    """A company/product voice alternative to the default personal voice.
+
+    `linkedin_org_urn` is filled in once the org OAuth flow discovers the
+    target company page — Phase 3b uses it to route publish calls.
+    """
+    display_name: str
+    headline: str = ""
+    positioning: list[str] = Field(default_factory=list)
+    voice_rules: list[str] = Field(default_factory=list)
+    linkedin_org_urn: Optional[str] = None
+
+
 class RepoConfig(BaseModel):
     name: str
     type: Literal["local", "github", "rss", "telemetry"]
@@ -53,6 +66,9 @@ class Server(BaseModel):
 class Config(BaseModel):
     author: Author
     repos: list[RepoConfig] = Field(default_factory=list)
+    # Keys are short slugs ('blitzpicks', 'e360', ...) used as `target` in the
+    # generation flow. Absent from this dict → 'personal' is the only option.
+    brand_voices: dict[str, BrandVoice] = Field(default_factory=dict)
     generation: Generation = Generation()
     server: Server = Server()
 

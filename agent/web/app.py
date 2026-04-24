@@ -71,15 +71,20 @@ def create_app(cfg: Config) -> FastAPI:
         _job_state["detail"] = detail
         _job_state["started_at"] = time.time() if kind else None
 
-    def _run_generate(events: Optional[list], detail: str) -> None:
+    def _run_generate(
+        events: Optional[list],
+        detail: str,
+        target: str = "personal",
+    ) -> None:
         """Background wrapper around generate_variants_job with locking + job tracking."""
         from agent.scheduler import generate_variants_job
         if not _gen_lock.acquire(blocking=False):
             log.info("generation already running; ignoring concurrent trigger")
             return
         try:
-            _set_job("generating", detail)
-            generate_variants_job(cfg, events=events)
+            dt = detail if target == "personal" else f"{detail} · {target}"
+            _set_job("generating", dt)
+            generate_variants_job(cfg, events=events, target=target)
         except Exception:
             log.exception("background generate failed")
         finally:
@@ -91,6 +96,7 @@ def create_app(cfg: Config) -> FastAPI:
         url: Optional[str],
         image_path: Optional[str],
         note: Optional[str],
+        target: str = "personal",
     ) -> None:
         """Full artifact pipeline in background: fetch URL, describe image,
         combine with note, run the normal generator."""
@@ -100,7 +106,8 @@ def create_app(cfg: Config) -> FastAPI:
             log.info("generation already running; ignoring artifact trigger")
             return
         try:
-            _set_job("generating", f"artifact #{artifact_id}")
+            detail = f"artifact #{artifact_id}" + ("" if target == "personal" else f" · {target}")
+            _set_job("generating", detail)
             url_data = None
             if url:
                 from agent.artifacts.url_fetcher import fetch_and_extract
@@ -149,7 +156,7 @@ def create_app(cfg: Config) -> FastAPI:
                 "author": None,
                 "event_timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            generate_variants_job(cfg, events=[synthetic_event])
+            generate_variants_job(cfg, events=[synthetic_event], target=target)
         except Exception:
             log.exception("artifact generate failed for id=%d", artifact_id)
         finally:
@@ -195,6 +202,7 @@ def create_app(cfg: Config) -> FastAPI:
                 "groups": groups,
                 "angle_labels": ANGLE_LABELS,
                 "linkedin_connected": linkedin_connected,
+                "brand_voices": cfg.brand_voices,
                 "job": job,
                 "active": "queue",
             },
@@ -354,10 +362,13 @@ def create_app(cfg: Config) -> FastAPI:
         return RedirectResponse(url="/", status_code=303)
 
     @app.post("/actions/generate_now")
-    def generate_now(background_tasks: BackgroundTasks):
+    def generate_now(
+        background_tasks: BackgroundTasks,
+        target: str = Form("personal"),
+    ):
         # Runs in background so the browser isn't blocked for 2-3 minutes
         # while Grok drafts 3 posts + 3 images.
-        background_tasks.add_task(_run_generate, None, "all unprocessed")
+        background_tasks.add_task(_run_generate, None, "all unprocessed", target)
         return RedirectResponse(url="/", status_code=303)
 
     @app.get("/artifact", response_class=HTMLResponse)
@@ -368,6 +379,7 @@ def create_app(cfg: Config) -> FastAPI:
             {
                 "request": request,
                 "recent": recent,
+                "brand_voices": cfg.brand_voices,
                 "active": "artifact",
             },
         )
@@ -377,6 +389,7 @@ def create_app(cfg: Config) -> FastAPI:
         background_tasks: BackgroundTasks,
         url: Optional[str] = Form(None),
         note: Optional[str] = Form(None),
+        target: str = Form("personal"),
         image: Optional[UploadFile] = File(None),
     ):
         url_clean = (url or "").strip() or None
@@ -407,7 +420,7 @@ def create_app(cfg: Config) -> FastAPI:
         artifact_id = db.save_artifact(url=url_clean, image_path=image_path, note=note_clean)
         background_tasks.add_task(
             _run_artifact_generate,
-            artifact_id, url_clean, image_path, note_clean,
+            artifact_id, url_clean, image_path, note_clean, target,
         )
         return RedirectResponse(url="/", status_code=303)
 
@@ -434,6 +447,7 @@ def create_app(cfg: Config) -> FastAPI:
             {
                 "request": request,
                 "recent": recent,
+                "brand_voices": cfg.brand_voices,
                 "active": "compose",
             },
         )
@@ -442,6 +456,7 @@ def create_app(cfg: Config) -> FastAPI:
     def compose_generate(
         background_tasks: BackgroundTasks,
         topic: str = Form(...),
+        target: str = Form("personal"),
     ):
         text = (topic or "").strip()
         if not text:
@@ -464,6 +479,7 @@ def create_app(cfg: Config) -> FastAPI:
             _run_generate,
             [synthetic_event],
             f"compose topic #{topic_id}",
+            target,
         )
         return RedirectResponse(url="/", status_code=303)
 
@@ -477,6 +493,7 @@ def create_app(cfg: Config) -> FastAPI:
                 "request": request,
                 "groups": groups,
                 "total": total,
+                "brand_voices": cfg.brand_voices,
                 "active": "events",
             },
         )
@@ -502,8 +519,9 @@ def create_app(cfg: Config) -> FastAPI:
         if not events:
             return RedirectResponse(url="/events", status_code=303)
 
+        target = (form.get("target") or "personal").strip() or "personal"
         detail = f"{len(events)} selected event(s)"
-        background_tasks.add_task(_run_generate, events, detail)
+        background_tasks.add_task(_run_generate, events, detail, target)
         return RedirectResponse(url="/", status_code=303)
 
     @app.post("/actions/skip_events")

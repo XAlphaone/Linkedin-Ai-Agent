@@ -41,7 +41,8 @@
     </label>
 
     <div class="artifact-actions">
-      <span class="hint">At least one of URL / image / take is required.</span>
+      {% include "_target_select.html" %}
+      <span class="hint">At least one of URL / image / take is required. Target picks the voice.</span>
       <button type="submit" class="btn">Generate 3 variants</button>
     </div>
   </form>

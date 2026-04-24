@@ -1,0 +1,13 @@
+{# Renders a <select name="target"> with Personal + any configured brand voices.
+   Usage: {% include "_target_select.html" with context %}
+   Expects `brand_voices` in context (dict[str, BrandVoice]).
+#}
+<label class="target-select">
+  <span class="label-text">Target</span>
+  <select name="target">
+    <option value="personal">Personal</option>
+    {% for key, brand in (brand_voices or {}).items() %}
+      <option value="{{ key }}">{{ brand.display_name }}</option>
+    {% endfor %}
+  </select>
+</label>

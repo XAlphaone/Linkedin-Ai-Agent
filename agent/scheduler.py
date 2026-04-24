@@ -63,12 +63,18 @@ def poll_repos_job(cfg: Config) -> int:
     return total
 
 
-def generate_variants_job(cfg: Config, events: list[dict] | None = None) -> int:
+def generate_variants_job(
+    cfg: Config,
+    events: list[dict] | None = None,
+    target: str = "personal",
+) -> int:
     """Generate 3 variants + images.
 
     If `events` is None (cron or 'Generate Now' default), pull up to 20
     unprocessed events. If a list is passed in (from the /events UI), use it
     verbatim — caller is responsible for filtering to unprocessed.
+
+    `target` picks the voice ('personal' or a brand_voices key).
     """
     from agent.generator import grok as gen_client
     from agent.generator import grok_images
@@ -77,11 +83,12 @@ def generate_variants_job(cfg: Config, events: list[dict] | None = None) -> int:
     if events is None:
         events = balanced_unprocessed_events(per_repo=EVENTS_PER_REPO_DEFAULT)
         log.info(
-            "generate_variants: balanced draw — %d events across %d repos",
+            "generate_variants: balanced draw — %d events across %d repos, target=%s",
             len(events),
             len({e["repo_id"] for e in events}),
+            target,
         )
-    variants = gen_client.generate_variants(cfg, events)
+    variants = gen_client.generate_variants(cfg, events, target=target)
     if not variants:
         log.info("generate_variants: nothing produced")
         return 0
@@ -96,6 +103,7 @@ def generate_variants_job(cfg: Config, events: list[dict] | None = None) -> int:
             variant_group=vg,
             hook=v["hook"],
             content=v["content"],
+            draft_target=target,
         )
         inserted.append((post_id, v))
     mark_events_processed(source_ids)

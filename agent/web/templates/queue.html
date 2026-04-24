@@ -8,7 +8,10 @@
     <form method="post" action="/actions/poll_now" class="inline">
       <button type="submit" class="btn ghost">Poll Now</button>
     </form>
-    <form method="post" action="/actions/generate_now" class="inline">
+    <form method="post" action="/actions/generate_now" class="inline generate-now-form">
+      {% if brand_voices %}
+        {% include "_target_select.html" %}
+      {% endif %}
       <button type="submit" class="btn" {% if job.running %}disabled{% endif %}>Generate Now</button>
     </form>
   </div>
@@ -66,6 +69,11 @@
         <header class="card-head">
           <div class="angle">{{ info.label }}</div>
           <div class="audience">{{ info.audience }}</div>
+          {% if post.draft_target and post.draft_target != 'personal' %}
+            <div class="target-badge" title="drafted with the {{ post.draft_target }} brand voice">
+              {{ (brand_voices.get(post.draft_target).display_name) if brand_voices.get(post.draft_target) else post.draft_target }}
+            </div>
+          {% endif %}
         </header>
 
         {% if post.image_path %}

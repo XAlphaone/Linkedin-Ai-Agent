@@ -38,6 +38,21 @@ repos:
     url: "http://export.arxiv.org/rss/cs.AI"
     enabled: true
 
+brand_voices:
+  # Each entry is a company/product voice separate from your personal voice.
+  # The slug (e.g. 'mycompany') is used as the target= value in the UI when
+  # generating. Uncomment and edit for each company page you admin.
+  #
+  # mycompany:
+  #   display_name: "My Company"
+  #   headline: "One-line product description"
+  #   positioning:
+  #     - "Specific thing the product does — lead with outcomes not adjectives"
+  #     - "Second specific thing"
+  #   voice_rules:
+  #     - "First person PLURAL. Speak as the team — we, not I."
+  #     - "Real numbers and concrete user outcomes, never hype."
+
 generation:
   model: "grok-4.20-0309-reasoning"            # any xAI text model
   variants_per_day: 3

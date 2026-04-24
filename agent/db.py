@@ -146,6 +146,10 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
         if "publish_target_urn" not in existing_post_cols:
             # urn:li:person:... for personal, urn:li:organization:... for a page.
             conn.execute("ALTER TABLE posts ADD COLUMN publish_target_urn TEXT")
+        if "draft_target" not in existing_post_cols:
+            # Which brand voice this draft was written for: 'personal' (default)
+            # or a key from config.brand_voices (e.g. 'blitzpicks').
+            conn.execute("ALTER TABLE posts ADD COLUMN draft_target TEXT DEFAULT 'personal'")
 
 
 # -------------------- repos --------------------
@@ -393,14 +397,16 @@ def insert_post(
     variant_group: str,
     hook: str,
     content: str,
+    draft_target: str = "personal",
 ) -> int:
     with connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO posts (source_event_ids, angle, variant_group, hook, content)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO posts
+                (source_event_ids, angle, variant_group, hook, content, draft_target)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (json.dumps(source_event_ids), angle, variant_group, hook, content),
+            (json.dumps(source_event_ids), angle, variant_group, hook, content, draft_target),
         )
         return cur.lastrowid
 

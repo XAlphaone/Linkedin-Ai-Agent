@@ -1,6 +1,8 @@
 """System prompt, angle specs, voice guide."""
 from __future__ import annotations
 
+from typing import Optional
+
 from agent.config import Config
 
 BANNED_PHRASES: list[str] = [
@@ -77,6 +79,7 @@ BANNED — rewrite if any of these appear:
 
 
 def system_prompt(cfg: Config) -> str:
+    """Default personal voice. First person singular."""
     a = cfg.author
     positioning = "\n".join(f"- {p}" for p in a.positioning) or "- (none provided)"
     avoid = "\n".join(f"- {t}" for t in a.avoid_topics) or "- (none)"
@@ -87,6 +90,37 @@ def system_prompt(cfg: Config) -> str:
         f"Avoid these topics:\n{avoid}\n\n"
         f"{VOICE_GUIDE}"
     )
+
+
+def brand_system_prompt(cfg: Config, brand_key: str) -> str:
+    """Company / product voice. First person plural, more polished.
+
+    Falls back to the personal system_prompt if brand_key isn't configured.
+    """
+    brand = cfg.brand_voices.get(brand_key)
+    if not brand:
+        return system_prompt(cfg)
+    positioning = "\n".join(f"- {p}" for p in brand.positioning) or "- (none provided)"
+    brand_rules = "\n".join(f"- {r}" for r in brand.voice_rules) or "- (none provided)"
+    avoid = "\n".join(f"- {t}" for t in cfg.author.avoid_topics) or "- (none)"
+    return (
+        f"You are drafting LinkedIn posts on behalf of {brand.display_name}, "
+        f"posted to its company page.\n"
+        f"Company headline: {brand.headline or '(none)'}\n\n"
+        f"Positioning (what this company actually does):\n{positioning}\n\n"
+        f"Company voice rules (these are primary — follow these even if they "
+        f"conflict with habits from a personal voice):\n{brand_rules}\n\n"
+        f"Avoid these topics:\n{avoid}\n\n"
+        f"{VOICE_GUIDE}"
+    )
+
+
+def system_prompt_for_target(cfg: Config, target: Optional[str]) -> str:
+    """Dispatch helper used by the generator. 'personal' or None → personal voice;
+    any other target looks up a brand_voices entry."""
+    if not target or target == "personal":
+        return system_prompt(cfg)
+    return brand_system_prompt(cfg, target)
 
 
 def _format_events(events: list[dict]) -> str:

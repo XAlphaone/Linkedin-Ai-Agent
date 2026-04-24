@@ -17,7 +17,8 @@
       placeholder="Type anything here. A rough observation, a reaction to a paper you read, a decision you just made, a pattern you've noticed. Grok will take it from here, in your voice, across the three angles (technical_peer / decision_maker / mixed_story). Longer and more specific is almost always better."
       required></textarea>
     <div class="compose-actions">
-      <span class="hint">Minimum ~50 chars lands better posts · no character cap</span>
+      {% include "_target_select.html" %}
+      <span class="hint">Target picks the voice · "Personal" uses first-person singular</span>
       <button type="submit" class="btn">Generate 3 variants</button>
     </div>
   </form>

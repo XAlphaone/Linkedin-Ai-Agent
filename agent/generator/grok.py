@@ -88,8 +88,17 @@ def _generate_for_angle(
     return {"angle": angle, "hook": hook, "content": text}
 
 
-def generate_variants(cfg: Config, events: list[dict]) -> list[dict]:
-    """Generate one post per angle (three total). Returns [{angle, hook, content}, ...]."""
+def generate_variants(
+    cfg: Config,
+    events: list[dict],
+    target: str = "personal",
+) -> list[dict]:
+    """Generate one post per angle (three total). Returns [{angle, hook, content}, ...].
+
+    `target` picks the voice: 'personal' uses the author section in config.yaml;
+    any other slug looks up cfg.brand_voices[target] for the company voice.
+    Falls back to personal voice silently if the target isn't configured.
+    """
     if not cfg.xai_api_key:
         log.error("XAI_API_KEY not set; skipping generation")
         return []
@@ -105,7 +114,8 @@ def generate_variants(cfg: Config, events: list[dict]) -> list[dict]:
         base_url=XAI_BASE_URL,
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
-    system_text = prompts.system_prompt(cfg)
+    system_text = prompts.system_prompt_for_target(cfg, target)
+    log.info("generating %d angles for target=%r", len(prompts.ANGLES), target)
 
     variants: list[dict] = []
     for angle in prompts.ANGLES:
