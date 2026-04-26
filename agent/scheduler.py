@@ -67,6 +67,7 @@ def generate_variants_job(
     cfg: Config,
     events: list[dict] | None = None,
     target: str = "personal",
+    user_image_path: str | None = None,
 ) -> int:
     """Generate 3 variants + images.
 
@@ -75,6 +76,10 @@ def generate_variants_job(
     verbatim — caller is responsible for filtering to unprocessed.
 
     `target` picks the voice ('personal' or a brand_voices key).
+
+    `user_image_path`: when provided (e.g. from /compose with an upload), all
+    variants share that image and the per-variant Grok image generation is
+    skipped. When None, the normal two-pass image pipeline runs per variant.
     """
     from agent.generator import grok as gen_client
     from agent.generator import grok_images
@@ -109,8 +114,14 @@ def generate_variants_job(
     mark_events_processed(source_ids)
     log.info("generate_variants: group=%s variants=%d", vg, len(variants))
 
-    # Best-effort image per variant. Failures don't affect the posts.
-    if cfg.generation.generate_images:
+    # Image handling. User-supplied image short-circuits the AI gen path.
+    if user_image_path:
+        log.info("user supplied image %s — skipping AI image gen for %d variants",
+                 user_image_path, len(inserted))
+        for post_id, _v in inserted:
+            set_post_image_path(post_id, user_image_path)
+    elif cfg.generation.generate_images:
+        # Best-effort image per variant. Failures don't affect the posts.
         for post_id, v in inserted:
             path = grok_images.generate_image_for_post(
                 cfg=cfg,

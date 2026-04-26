@@ -24,8 +24,20 @@ _HERE = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=str(_HERE / "templates"))
 
 ARTIFACT_DIR = Path("data/artifacts")
+COMPOSE_IMAGE_DIR = Path("data/compose_images")
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 MAX_IMAGE_BYTES = 15 * 1024 * 1024  # 15 MB is plenty for LinkedIn-sized images
+
+
+def _media_for_image(path: Path) -> str:
+    """Best-effort image media type from extension (used by serve_image)."""
+    return {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }.get(path.suffix.lower(), "image/png")
 
 
 class IngestEvent(BaseModel):
@@ -75,6 +87,7 @@ def create_app(cfg: Config) -> FastAPI:
         events: Optional[list],
         detail: str,
         target: str = "personal",
+        user_image_path: Optional[str] = None,
     ) -> None:
         """Background wrapper around generate_variants_job with locking + job tracking."""
         from agent.scheduler import generate_variants_job
@@ -83,8 +96,12 @@ def create_app(cfg: Config) -> FastAPI:
             return
         try:
             dt = detail if target == "personal" else f"{detail} · {target}"
+            if user_image_path:
+                dt = f"{dt} · with uploaded image"
             _set_job("generating", dt)
-            generate_variants_job(cfg, events=events, target=target)
+            generate_variants_job(
+                cfg, events=events, target=target, user_image_path=user_image_path,
+            )
         except Exception:
             log.exception("background generate failed")
         finally:
@@ -341,7 +358,7 @@ def create_app(cfg: Config) -> FastAPI:
         path = Path(post["image_path"])
         if not path.exists():
             raise HTTPException(status_code=404, detail="image file missing")
-        return FileResponse(path, media_type="image/png")
+        return FileResponse(path, media_type=_media_for_image(path))
 
     @app.post("/posts/{post_id}/regenerate_image")
     def regenerate_image(post_id: int, background_tasks: BackgroundTasks):
@@ -471,16 +488,36 @@ def create_app(cfg: Config) -> FastAPI:
         )
 
     @app.post("/actions/compose_generate")
-    def compose_generate(
+    async def compose_generate(
         background_tasks: BackgroundTasks,
         topic: str = Form(...),
         target: str = Form("personal"),
+        image: Optional[UploadFile] = File(None),
     ):
         text = (topic or "").strip()
         if not text:
             return RedirectResponse(url="/compose", status_code=303)
 
-        topic_id = db.save_compose_topic(text)
+        # Optional image upload — if provided, all 3 variants share it and the
+        # AI image-gen pipeline is skipped.
+        user_image_path: Optional[str] = None
+        if image and image.filename:
+            ext = Path(image.filename).suffix.lower()
+            if ext not in ALLOWED_IMAGE_EXTENSIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"image must be one of {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))}",
+                )
+            COMPOSE_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+            raw = await image.read(MAX_IMAGE_BYTES + 1)
+            if len(raw) > MAX_IMAGE_BYTES:
+                raise HTTPException(status_code=413, detail="image exceeds 15 MB cap")
+            fname = f"compose_{int(time.time() * 1000)}{ext}"
+            dst = COMPOSE_IMAGE_DIR / fname
+            dst.write_bytes(raw)
+            user_image_path = str(dst).replace("\\", "/")
+
+        topic_id = db.save_compose_topic(text, image_path=user_image_path)
         from datetime import datetime, timezone
         synthetic_event = {
             "id": 0,  # zero = not a real repo_events row; mark_events_processed no-ops
@@ -498,6 +535,7 @@ def create_app(cfg: Config) -> FastAPI:
             [synthetic_event],
             f"compose topic #{topic_id}",
             target,
+            user_image_path,
         )
         return RedirectResponse(url="/", status_code=303)
 

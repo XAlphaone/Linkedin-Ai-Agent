@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS engagement (
 CREATE TABLE IF NOT EXISTS compose_topics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    text TEXT NOT NULL
+    text TEXT NOT NULL,
+    image_path TEXT
 );
 
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -170,6 +171,10 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
             # Which brand voice this draft was written for: 'personal' (default)
             # or a key from config.brand_voices (e.g. 'blitzpicks').
             conn.execute("ALTER TABLE posts ADD COLUMN draft_target TEXT DEFAULT 'personal'")
+
+        existing_compose_cols = {row["name"] for row in conn.execute("PRAGMA table_info(compose_topics)").fetchall()}
+        if "image_path" not in existing_compose_cols:
+            conn.execute("ALTER TABLE compose_topics ADD COLUMN image_path TEXT")
 
 
 # -------------------- repos --------------------
@@ -449,11 +454,11 @@ def set_post_linkedin_urn(post_id: int, urn: Optional[str]) -> None:
 
 # -------------------- compose_topics --------------------
 
-def save_compose_topic(text: str) -> int:
+def save_compose_topic(text: str, image_path: Optional[str] = None) -> int:
     with connect() as conn:
         cur = conn.execute(
-            "INSERT INTO compose_topics (text) VALUES (?)",
-            (text,),
+            "INSERT INTO compose_topics (text, image_path) VALUES (?, ?)",
+            (text, image_path),
         )
         return cur.lastrowid
 

@@ -691,10 +691,27 @@ pre.code-block {
   line-height: 1.6;
   min-height: 180px;
 }
+.compose-image-field {
+  display: block;
+  margin-top: 14px;
+}
+.compose-image-field .label-text {
+  display: block;
+  font-family: var(--serif);
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.compose-image-field .hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .compose-actions {
   display: flex;
   align-items: center;
-  margin-top: 12px;
+  margin-top: 16px;
   gap: 16px;
 }
 .compose-actions .hint {
